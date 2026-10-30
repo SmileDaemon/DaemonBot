@@ -1,8 +1,9 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { Events } from 'discord.js';
 import { count, drain, enableAnalytics, gauge, markActive, restore } from './analytics.js';
-import { runPanelCommand, WORDS_PATH } from './commands.js';
+import { runPanelCommand } from './commands.js';
 import { guildSnapshot, musicState } from './snapshot.js';
+import { wordsFile } from '../features/wordFilter.js';
 import { isOptedOut } from '../utils/store.js';
 
 const SYNC_MS = 10_000;
@@ -64,9 +65,10 @@ export function startPanel(client) {
     }
 
     let wordlist;
-    if (existsSync(WORDS_PATH)) {
-      const mtime = statSync(WORDS_PATH).mtimeMs;
-      if (mtime !== wordsMtime) wordlist = readFileSync(WORDS_PATH, 'utf8');
+    const wordsPath = wordsFile();
+    if (existsSync(wordsPath)) {
+      const mtime = statSync(wordsPath).mtimeMs;
+      if (mtime !== wordsMtime) wordlist = readFileSync(wordsPath, 'utf8');
     }
 
     const pending = drain();
@@ -128,7 +130,7 @@ export function startPanel(client) {
       if (state) musicSent.add(id);
       else musicSent.delete(id);
     }
-    if (wordlist !== undefined) wordsMtime = statSync(WORDS_PATH).mtimeMs;
+    if (wordlist !== undefined) wordsMtime = statSync(wordsPath).mtimeMs;
 
     // Apply the panel's changes in order; their results go back on the next sync.
     for (const command of reply.commands ?? []) {

@@ -1,14 +1,12 @@
-import { writeFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { PermissionFlagsBits } from 'discord.js';
 import { endGuildSessions } from '../features/gameTracker.js';
 import { optIn, optOut } from '../features/optOut.js';
 import { endGuildVoice } from '../features/voiceTracker.js';
-import { parseWordList } from '../features/wordFilter.js';
+import { parseWordList, SAVED_WORDS } from '../features/wordFilter.js';
 import { COLORS, logEvent } from '../utils/logging.js';
 import { guildConfig, isOptedOut, warnings } from '../utils/store.js';
-
-export const WORDS_PATH = fileURLToPath(new URL('../../filter-words.txt', import.meta.url));
 
 class Refused extends Error {}
 const refuse = (message) => {
@@ -187,7 +185,8 @@ const HANDLERS = {
   async 'wordlist.set'(_guild, { text }) {
     if (typeof text !== 'string' || text.length > 100_000) refuse('That word list is not valid.');
     const count = parseWordList(text).length;
-    writeFileSync(WORDS_PATH, text.replace(/\r?\n/g, '\n'), 'utf8');
+    mkdirSync(dirname(SAVED_WORDS), { recursive: true });
+    writeFileSync(SAVED_WORDS, text.replace(/\r?\n/g, '\n'), 'utf8');
     return `Word list saved: ${count} entr${count === 1 ? 'y' : 'ies'}. The filter picks it up within a few seconds.`;
   },
   // Owners only: applies an opt-out a member asked for by email. Each server is requested separately.

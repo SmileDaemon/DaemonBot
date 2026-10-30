@@ -39,10 +39,19 @@ Re-run `npm run deploy` whenever you add or change a command's options. When you
 Set in `.env`: `ENABLE_SERVER_LOGS` (server events in the log channel), `ENABLE_MESSAGE_QUOTES` (message-link previews), and `ENABLE_GAME_TRACKING`, `ENABLE_VOICE_TRACKING`, `ENABLE_ACTIVITY_TRACKING`, `ENABLE_CONNECTION_TRACKING` (the control panel's trackers, each also switched on or off per server in the panel). Game and voice time in progress is saved every 10 minutes and when the bot stops.
 
 ### Keeping it online
-The bot only runs while `npm start` is running. For 24/7 uptime, run it on an always-on machine or a host (a small VPS, Railway, fly.io, etc.), ideally with a process manager like [pm2](https://pm2.keymetrics.io): `npm i -g pm2 && pm2 start src/index.js --name daemonbot`.
+The bot only runs while `npm start` is running. It's hosted on [Railway](https://railway.com) (Hobby plan, about $5/month), which redeploys it on every push to `main` that touches the bot's code. [`railway.json`](railway.json) holds the start command, the restart policy and which files trigger a redeploy. Setting it up (once):
+
+1. Sign up at railway.com with your GitHub account and pick the Hobby plan.
+2. **New Project → Deploy from GitHub repo →** `SmileDaemon/DaemonBot`. Let Railway's GitHub app see the repository if it asks.
+3. Open the service → **Variables → Raw Editor**, paste your `.env` and click Update. Leave out `LAVALINK_*` while music is shelved.
+4. Add a volume, so `data/` survives redeploys: right-click the project canvas → **Volume**, attach it to the service, and set the mount path to `/app/data`.
+5. Stop the bot on your PC (Ctrl+C) before the first deploy. Two copies would both answer every command and keep separate data.
+6. Deploy. The service's **Deployments → View logs** should show `Logged in as …` and `Control panel: syncing with …`. The bot needs no public domain, so leave Networking alone.
+
+Register commands (`npm run deploy`) from your PC as before: that talks to Discord directly and doesn't need the host.
 
 ### Data
-Warnings, tickets, game, voice, activity and connection stats, and per-server settings are saved as JSON in `data/`. Back that folder up if you move hosts.
+Warnings, tickets, game, voice, activity and connection stats, and per-server settings are saved as JSON in `data/`. Word list edits made in the control panel are saved as `data/filter-words.txt`, which takes over from the repo's `filter-words.txt` once it exists, so a redeploy can't undo them; delete it to go back to the repo's list. On Railway, `data/` is the volume. Back that folder up if you move hosts.
 
 ### Adding commands
 Drop a file in any folder under `src/commands/` exporting `default { data, execute }` (see `src/commands/general/ping.js`), then `npm run deploy`.

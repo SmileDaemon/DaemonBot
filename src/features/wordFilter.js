@@ -5,7 +5,11 @@ import { COLORS, logAction, markBotDeleted } from '../utils/logging.js';
 import { notice } from '../utils/replies.js';
 import { guildConfig } from '../utils/store.js';
 
-const WORDS_FILE = fileURLToPath(new URL('../../filter-words.txt', import.meta.url));
+// The repo's list is the starting point; panel edits are saved in data/, which survives redeploys on a host.
+const DEFAULT_WORDS = fileURLToPath(new URL('../../filter-words.txt', import.meta.url));
+export const SAVED_WORDS = fileURLToPath(new URL('../../data/filter-words.txt', import.meta.url));
+/** The word list in use: the panel's saved copy once there is one, otherwise the repo's. */
+export const wordsFile = () => (existsSync(SAVED_WORDS) ? SAVED_WORDS : DEFAULT_WORDS);
 const NOTICE_LIFETIME = 6_000;
 
 // Common character swaps used to dodge filters (n1gg3r, f@g, $pic).
@@ -35,11 +39,12 @@ function compile(entry) {
 let terms = [];
 
 function loadWords() {
-  if (!existsSync(WORDS_FILE)) {
+  const file = wordsFile();
+  if (!existsSync(file)) {
     terms = [];
-    return console.warn(`Word filter: ${WORDS_FILE} not found, filter has no words.`);
+    return console.warn(`Word filter: ${file} not found, filter has no words.`);
   }
-  terms = parseWordList(readFileSync(WORDS_FILE, 'utf8'));
+  terms = parseWordList(readFileSync(file, 'utf8'));
   console.log(`Word filter: loaded ${terms.length} term(s).`);
 }
 
@@ -54,7 +59,8 @@ export function parseWordList(text) {
 /** Loads the word list and reloads it whenever the file is saved, so edits apply without a restart. */
 export function startWordFilter() {
   loadWords();
-  watchFile(WORDS_FILE, { interval: 2_000 }, loadWords);
+  watchFile(DEFAULT_WORDS, { interval: 2_000 }, loadWords);
+  watchFile(SAVED_WORDS, { interval: 2_000 }, loadWords);
 }
 
 /** Returns the list entry that `text` violates, or null. */
