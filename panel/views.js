@@ -367,8 +367,8 @@ export async function connections(main, { guildId, query }) {
   main.innerHTML = loading;
   // A search only ever looks at this server; the worker checks the viewer may see it.
   const guild = await api(`/api/guilds/${guildId}`);
-  if (guild.connectionsAccess === false) {
-    main.innerHTML = `${offlineBanner(guild.bot)}<div class="empty">Connection data for this server isn't available here. The bot's owner can allow it.</div>`;
+  if (guild.statsAccess === false) {
+    main.innerHTML = `${offlineBanner(guild.bot)}<div class="empty">Activity and connection data for this server isn't available here. The bot's owner can allow it.</div>`;
     return;
   }
   const found = q ? await api(`/api/guilds/${guildId}/connections?q=${encodeURIComponent(q)}`) : null;
@@ -755,8 +755,8 @@ const onOff = (on) => `<span class="pill ${on ? 'good' : ''}">${on ? 'On' : 'Off
 function serversCard(servers) {
   if (!servers.length) return '<div class="card wide"><h2>All servers</h2><div class="empty">The bot hasn\'t reported any servers yet.</div></div>';
   const total = (key) => servers.reduce((n, s) => n + s.counts[key], 0);
-  const access = (s) => `<button class="small${s.connectionsAccess ? ' primary' : ''}" data-access="${esc(s.id)}" data-allowed="${s.connectionsAccess ? '1' : ''}"
-      title="${s.connectionsAccess ? `Allowed ${esc(ago(s.connectionsAccessSince))}. Click to stop.` : 'Click to let this server\'s admins see its connections.'}">${s.connectionsAccess ? 'Allowed' : 'Not allowed'}</button>`;
+  const access = (s) => `<button class="small${s.statsAccess ? ' primary' : ''}" data-access="${esc(s.id)}" data-allowed="${s.statsAccess ? '1' : ''}"
+      title="${s.statsAccess ? `Allowed ${esc(ago(s.statsAccessSince))}. Click to stop.` : 'Click to let this server\'s admins see its activity and connections.'}">${s.statsAccess ? 'Allowed' : 'Not allowed'}</button>`;
   const row = (s) => `<tr>
       <td><a href="#/g/${esc(s.id)}/overview">${esc(s.name)}</a><div class="muted small">${esc(s.id)}</div></td>
       <td class="num">${num(s.memberCount)}</td>
@@ -771,22 +771,22 @@ function serversCard(servers) {
       connections ${onOff(s.settings.connectionTracking)} levels ${onOff(s.settings.levels)}</div><div class="rawbox"></div></td></tr>`;
   return `<div class="card wide"><h2>All servers</h2>
     <p class="muted small">The statistics the panel holds for each server the bot is in. Click a server to open its pages; you can open every server's pages. Raw data is the server's full latest report from the bot. Members with stats: activity · voice · games. Connections: pairs / groups (the 100 strongest pairs are kept). Stats: days of server totals.</p>
-    <p class="muted small"><b>Admins see connections:</b> a server's admins can only see its connection data (the Connections tab, and connections in member search) once you allow it here. You always see it.</p>
-    <div class="table-wrap"><table><thead><tr><th>Server</th><th class="num">Members</th><th class="num">Activity</th><th class="num">Voice</th><th class="num">Games</th><th class="num">Connections</th><th>Admins see connections</th><th class="num">Stats</th><th>Last report</th><th></th></tr></thead>
+    <p class="muted small"><b>Admins see activity and connections:</b> a server's admins only get the Activity and Connections tabs, and those details in member search, once you allow it here. You always see it.</p>
+    <div class="table-wrap"><table><thead><tr><th>Server</th><th class="num">Members</th><th class="num">Activity</th><th class="num">Voice</th><th class="num">Games</th><th class="num">Connections</th><th>Admins see activity and connections</th><th class="num">Stats</th><th>Last report</th><th></th></tr></thead>
     <tbody>${servers.map(row).join('')}
       <tr><td><b>All ${num(servers.length)} servers</b></td><td class="num">${num(servers.reduce((n, s) => n + (s.memberCount ?? 0), 0))}</td>
       <td class="num">${num(total('activity'))}</td><td class="num">${num(total('voice'))}</td><td class="num">${num(total('games'))}</td>
       <td class="num">${num(total('pairs'))}<span class="muted"> / ${num(total('groups'))}</span></td>
-      <td class="small muted">${num(servers.filter((s) => s.connectionsAccess).length)} allowed</td><td></td><td></td><td></td></tr></tbody></table></div></div>`;
+      <td class="small muted">${num(servers.filter((s) => s.statsAccess).length)} allowed</td><td></td><td></td><td></td></tr></tbody></table></div></div>`;
 }
 
-/** The "Admins see connections" switches. The worker applies them at once; no need to wait for the bot. */
-function wireConnectionAccess(main, rerender) {
+/** The "Admins see activity and connections" switches. The worker applies them at once; no need to wait for the bot. */
+function wireStatsAccess(main, rerender) {
   main.querySelectorAll('[data-access]').forEach((button) =>
     button.addEventListener('click', async () => {
       button.disabled = true;
       try {
-        const { message } = await api('/api/owner/connection-access', { method: 'POST', body: { guildId: button.dataset.access, allowed: !button.dataset.allowed } });
+        const { message } = await api('/api/owner/stats-access', { method: 'POST', body: { guildId: button.dataset.access, allowed: !button.dataset.allowed } });
         toast(message);
         await rerender();
       } catch (err) {
@@ -887,7 +887,7 @@ export async function owner(main, { me, query }) {
       <div class="card wide" id="words"><h2>Word filter list</h2><div class="empty">Loading…</div></div>
     </div>`;
   wireRawData(main);
-  wireConnectionAccess(main, () => owner(main, { me, query }));
+  wireStatsAccess(main, () => owner(main, { me, query }));
   wireSearchForm(main);
   wireOptOuts(main);
   await Promise.all([q ? ownerConnectionResults(main.querySelector('#connresults'), q) : null, loadWordList(main.querySelector('#words'))]);

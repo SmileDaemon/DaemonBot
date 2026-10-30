@@ -94,8 +94,8 @@ async function render() {
   let key;
   if (parts[0] === 'g' && me.guilds.some((g) => g.id === parts[1])) {
     const guild = me.guilds.find((g) => g.id === parts[1]);
-    // The Connections tab only shows once the bot's owner lets this server's admins see it.
-    const tabs = TABS.filter(([t]) => t !== 'connections' || guild.connectionsAccess !== false);
+    // The Activity and Connections tabs only show once the bot's owner lets this server's admins see them.
+    const tabs = TABS.filter(([t]) => !['activity', 'connections'].includes(t) || guild.statsAccess !== false);
     const tab = tabs.some(([t]) => t === parts[2]) ? parts[2] : 'overview';
     ctx = { ...ctx, guildId: guild.id };
     view = views[tab];
