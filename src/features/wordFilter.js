@@ -85,13 +85,13 @@ export async function handleWordFilter(message) {
 
   markBotDeleted([message.id]);
   await message.delete();
-  const notice = await message.channel.send({
+  const sent = await message.channel.send({
     ...notice('Your message was removed for offensive language.', { tone: 'error', content: `${message.author}` }),
     allowedMentions: { users: [message.author.id] },
   });
   setTimeout(() => {
-    markBotDeleted([notice.id]);
-    notice.delete().catch(() => {});
+    markBotDeleted([sent.id]);
+    sent.delete().catch(() => {});
   }, NOTICE_LIFETIME).unref();
 
   await logAction(message.guild, {
