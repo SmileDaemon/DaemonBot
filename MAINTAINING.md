@@ -1,6 +1,59 @@
 # Maintaining DaemonBot
 
-How to keep the bot healthy. [README.md](README.md) covers setup and the commands.
+How to set up and keep the bot healthy. [README.md](README.md) covers what the bot does.
+
+## Setup
+
+### 1. Create the bot application
+1. Go to https://discord.com/developers/applications and click **New Application**.
+2. **General Information:** copy the **Application ID**.
+3. **Bot:** click **Reset Token** and copy the token. Treat it like a password.
+4. On the **Bot** page, turn on **Message Content Intent** (word filter, server logs, previews), **Server Members Intent** (server logs, activity and connection trackers) and **Presence Intent** (game tracking).
+
+### 2. Configure
+```bash
+copy .env.example .env
+```
+Open `.env` and fill in `DISCORD_TOKEN` and `CLIENT_ID`. While testing, also set `DEV_GUILD_ID` to your server's ID (enable Developer Mode in Discord → right-click the server → Copy Server ID) so commands show up instantly.
+
+### 3. Invite the bot to your servers
+Open this URL with your Application ID substituted in:
+
+```
+https://discord.com/oauth2/authorize?client_id=YOUR_CLIENT_ID&scope=bot+applications.commands&permissions=1460560719030
+```
+
+That requests: Manage Server (invite tracking and AutoMod rule names in the logs), View Channels, Send Messages (+ in threads), Create Private Threads, Manage Threads, Embed Links, Attach Files, Read Message History, Mention Everyone, Manage Messages, Manage Channels, Manage Roles (channel locks and ticket setup), Kick, Ban, Timeout Members, View Audit Log, Connect and Speak.
+
+Then in **Server Settings → Roles**, drag the bot's role **above** any roles it should be able to moderate.
+
+### 4. Register commands and start
+```bash
+npm install
+npm run deploy
+npm start
+```
+Re-run `npm run deploy` whenever you add or change a command's options. When you're done testing, clear `DEV_GUILD_ID` and deploy again to register globally for every server.
+
+### Optional features
+Set in `.env`: `ENABLE_SERVER_LOGS` (server events in the log channel), `ENABLE_MESSAGE_QUOTES` (message-link previews), and `ENABLE_GAME_TRACKING`, `ENABLE_VOICE_TRACKING`, `ENABLE_ACTIVITY_TRACKING`, `ENABLE_CONNECTION_TRACKING` (the control panel's trackers, each also switched on or off per server in the panel). Game and voice time in progress is saved every 10 minutes and when the bot stops.
+
+### Keeping it online
+The bot only runs while `npm start` is running. For 24/7 uptime, run it on an always-on machine or a host (a small VPS, Railway, fly.io, etc.), ideally with a process manager like [pm2](https://pm2.keymetrics.io): `npm i -g pm2 && pm2 start src/index.js --name daemonbot`.
+
+### Data
+Warnings, tickets, game, voice, activity and connection stats, and per-server settings are saved as JSON in `data/`. Back that folder up if you move hosts.
+
+### Adding commands
+Drop a file in any folder under `src/commands/` exporting `default { data, execute }` (see `src/commands/general/ping.js`), then `npm run deploy`.
+
+### Music (shelved)
+Music is switched off and its commands aren't registered until it works properly. SoundCloud, the only free song search Lavalink has, changed its audio formats in 2026 and Lavalink can't play them yet ([lavaplayer#202](https://github.com/lavalink-devs/lavaplayer/pull/202)), so `/play` could only take pasted links.
+
+Everything is kept for later: the commands are in [`src/music/commands/`](src/music/commands), the Lavalink connection in [`src/music/`](src/music), and Lavalink's settings in [`lavalink/application.yml`](lavalink/application.yml). To bring it back: move the two command files to `src/commands/music/`, set `ENABLE_MUSIC=true`, put `Lavalink.jar` (v4, needs Java 17+) in `lavalink/`, run `npm run lavalink` in its own terminal, and `npm run deploy`.
+
+### Terms and privacy
+Fill in the bracketed placeholders in [TERMS.md](TERMS.md) and [PRIVACY.md](PRIVACY.md) (your name, contact, bot host, governing law) before publishing them. Discord asks for links to both in the Developer Portal (your app → General Information) before a bot can be verified.
 
 ## Housekeeping
 
