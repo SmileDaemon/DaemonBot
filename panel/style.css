@@ -193,6 +193,18 @@ summary::marker { color: var(--muted); }
 /* ---- Sign-in and messages ---- */
 .center { min-height: calc(100vh - 54px); /* leaves room for .site-footer */ display: grid; place-items: center; padding: 16px; }
 .signin { max-width: 460px; text-align: left; }
+/* The bot's picture hovers over the top edge of the sign-in card, bobbing gently. */
+.signin-wrap { position: relative; width: min(460px, 100%); padding-top: 92px; }
+.signin-wrap .signin { padding-top: 84px; }
+.signin-avatar {
+  position: absolute; top: 0; left: 50%; z-index: 1;
+  width: 160px; height: 160px; margin-left: -80px; border-radius: 50%; object-fit: cover;
+  border: 1px solid var(--border); background: var(--bg);
+  box-shadow: 0 0 0 4px var(--bg), 0 0 24px rgb(170 60 255 / 45%), 0 18px 28px rgb(0 0 0 / 60%);
+  animation: float 4s ease-in-out infinite;
+}
+@keyframes float { 50% { transform: translateY(-8px); } }
+@media (prefers-reduced-motion: reduce) { .signin-avatar { animation: none; } }
 .signin h1::after { content: "_"; animation: blink 1s steps(1) infinite; }
 .signin .button { margin-top: 12px; }
 .banner { padding: 8px 12px; background: var(--surface-2); border: 1px solid var(--border); margin-bottom: 16px; }

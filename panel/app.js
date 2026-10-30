@@ -30,14 +30,16 @@ function takeHash() {
 }
 
 function signIn(message) {
-  app.innerHTML = `<div class="center"><div class="card signin">
+  app.innerHTML = `<div class="center"><div class="signin-wrap">
+    <img class="signin-avatar" src="daemonbot.jpg" alt="DaemonBot" width="160" height="160">
+    <div class="card signin">
     <h1>DaemonBot control panel</h1>
     ${NOT_CONFIGURED && !IS_LOCAL
       ? '<div class="banner bad">This panel isn\'t connected to its server yet: set DEPLOYED_API in panel/config.js (see MAINTAINING.md).</div>'
       : `<p class="muted">${esc(message ?? 'Sign in with Discord to manage the servers where you have Manage Server.')}</p>
          <a class="button primary" href="${esc(loginUrl())}">Sign in with Discord</a>
          ${IS_LOCAL ? `<div><a class="button" href="${esc(devLoginUrl())}">Local test sign-in</a></div>` : ''}`}
-  </div></div>`;
+  </div></div></div>`;
 }
 
 function shell() {
