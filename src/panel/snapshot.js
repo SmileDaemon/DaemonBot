@@ -4,8 +4,9 @@ import { connectionsIn } from '../features/connectionTracker.js';
 import { gamesOf, liveMs } from '../features/gameTracker.js';
 import { levelSettings } from '../features/levels.js';
 import { statSettings } from '../features/statChannels.js';
+import { allTickets } from '../features/tickets.js';
 import { liveVoice, voiceOf } from '../features/voiceTracker.js';
-import { guildConfig, isOptedOut, tickets, warnings } from '../utils/store.js';
+import { guildConfig, isOptedOut, warnings } from '../utils/store.js';
 
 const env = (name) => process.env[name] === 'true';
 
@@ -114,8 +115,12 @@ function activitySnapshot(guild, voice) {
 export function guildSnapshot(guild) {
   const config = guildConfig.get(guild.id, {});
 
+  const ticketList = allTickets(guild.id).sort((a, b) => b.createdAt - a.createdAt);
+  const ticketChannels = new Set(ticketList.map((t) => t.channelId));
+
+  // Ticket channels aren't places to send logs or queues, so they stay out of the panel's channel lists.
   const channels = guild.channels.cache
-    .filter((c) => c.type === ChannelType.GuildText || c.type === ChannelType.GuildAnnouncement)
+    .filter((c) => (c.type === ChannelType.GuildText || c.type === ChannelType.GuildAnnouncement) && !ticketChannels.has(c.id))
     .sort((a, b) => (a.parent?.position ?? -1) - (b.parent?.position ?? -1) || a.position - b.position)
     .map((c) => ({ id: c.id, name: c.name, category: c.parent?.name ?? null }));
 
@@ -124,7 +129,6 @@ export function guildSnapshot(guild) {
     .sort((a, b) => b.position - a.position)
     .map((r) => ({ id: r.id, name: r.name, color: r.hexColor }));
 
-  const ticketList = Object.values(tickets.get(guild.id, {}).byThread ?? {}).sort((a, b) => b.createdAt - a.createdAt);
   const ticketCounts = { pending: 0, active: 0, archived: 0 };
   for (const t of ticketList) ticketCounts[t.status] = (ticketCounts[t.status] ?? 0) + 1;
 
@@ -218,7 +222,7 @@ export function guildSnapshot(guild) {
         createdAt: t.createdAt,
         claimedAt: t.claimedAt ?? null,
         closedAt: t.closedAt ?? null,
-        threadId: t.threadId,
+        channelId: t.channelId,
       })),
     },
     warnings: warned,

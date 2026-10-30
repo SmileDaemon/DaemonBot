@@ -9,6 +9,7 @@ import {
   StickerFormatType,
 } from 'discord.js';
 import { COLORS, logEvent } from '../../utils/logging.js';
+import { isTicketChannel } from '../tickets.js';
 import { byBot, byField, diffFields, findAuditEntry, overwriteChanges, permissionChanges, truncate } from './helpers.js';
 
 const CHANNEL_AUDIT = new Set([
@@ -28,10 +29,11 @@ const seconds = (s) => (s ? `${s}s` : 'off');
 const lines = (list) => truncate(list.join('\n'));
 
 export function registerServerStructureLogs(client, on) {
-  // Channels (threads, including tickets, have their own events and aren't logged here)
+  // Channels (threads have their own events and aren't logged here; tickets log their own opening and closing)
   on(Events.ChannelCreate, async (channel) => {
     if (!channel.guild) return;
     const entry = await findAuditEntry(channel.guild, AuditLogEvent.ChannelCreate, channel.id);
+    if (byBot(entry, client) && isTicketChannel(channel)) return;
     return logEvent(channel.guild, {
       title: 'Channel created',
       color: COLORS.join,

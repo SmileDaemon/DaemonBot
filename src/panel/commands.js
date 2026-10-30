@@ -5,6 +5,7 @@ import { endGuildSessions } from '../features/gameTracker.js';
 import { saveLevelSettings } from '../features/levels.js';
 import { optIn, optOut } from '../features/optOut.js';
 import { MAX_NAME, MAX_STATS, saveStatChannels, STAT_TYPES, statTypeOffered } from '../features/statChannels.js';
+import { changeStaffRole } from '../features/tickets.js';
 import { endGuildVoice } from '../features/voiceTracker.js';
 import { parseWordList, SAVED_WORDS } from '../features/wordFilter.js';
 import { COLORS, logEvent } from '../utils/logging.js';
@@ -102,6 +103,7 @@ const HANDLERS = {
 
     if (payload.staffRoleId) {
       if (!guild.roles.cache.has(payload.staffRoleId)) refuse("That role doesn't exist anymore.");
+      if (payload.staffRoleId !== tickets.staffRoleId) await changeStaffRole(guild, tickets.staffRoleId, payload.staffRoleId);
       tickets.staffRoleId = payload.staffRoleId;
       changes.push({ name: 'Staff role', value: `<@&${payload.staffRoleId}>`, inline: true });
     }
@@ -109,7 +111,7 @@ const HANDLERS = {
       const id = payload.queueChannelId || null;
       if (id) textChannel(guild, id);
       tickets.queueChannelId = id;
-      changes.push({ name: 'Queue channel', value: id ? `<#${id}>` : 'The ticket channel', inline: true });
+      changes.push({ name: 'Queue channel', value: id ? `<#${id}>` : 'None', inline: true });
     }
     if ('pingStaff' in payload) {
       tickets.pingStaff = Boolean(payload.pingStaff);

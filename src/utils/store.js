@@ -27,10 +27,10 @@ function createStore(name) {
   }
 }
 
-/** Per-server settings, keyed by guild ID: { logChannelId, wordFilter, tickets: { channelId, staffRoleId, queueChannelId, pingStaff } } */
+/** Per-server settings, keyed by guild ID: { logChannelId, wordFilter, tickets: { channelId, staffRoleId, queueChannelId, pingStaff, categoryId, archiveCategoryId } } */
 export const guildConfig = createStore('config');
 
-/** Tickets, keyed by guild ID: { next, byThread: { [threadId]: ticket } } */
+/** Tickets, keyed by guild ID: { next, byChannel: { [channelId]: ticket } } */
 export const tickets = createStore('tickets');
 
 /** Game activity, keyed by user ID, kept separately for each server: { guilds: { [guildId]: { [game]: { ms, sessions, days, lastDay, first, last } } } } */

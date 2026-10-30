@@ -469,10 +469,10 @@ export async function settings(main, ctx) {
       <form class="card" id="tickets">
         <h2>Tickets</h2>
         ${t
-          ? `<p class="muted small">Ticket channel: ${esc(channelName(guild, t.channelId))}. To move it, run <code>/ticket setup</code> in Discord.</p>
+          ? `<p class="muted small">"Open a ticket" button: ${esc(channelName(guild, t.channelId))}. Each ticket gets its own private channel. To move the button or the ticket categories, run <code>/ticket setup</code> in Discord.</p>
             <label class="field"><span>Staff role</span><select name="staffRoleId">${guild.roles.map((r) => option(r.id, `@${r.name}`, r.id === t.staffRoleId)).join('')}</select></label>
-            <label class="field"><span>Queue channel</span><select name="queueChannelId">${channelOptions(guild, t.queueChannelId, 'The ticket channel')}</select>
-              <span class="muted small">A staff-only channel keeps ticket details private.</span></label>
+            <label class="field"><span>Queue channel</span><select name="queueChannelId">${channelOptions(guild, t.queueChannelId, 'None: claim inside each ticket')}</select>
+              <span class="muted small">Lists new tickets with their details, so pick a channel only staff can see.</span></label>
             <label class="switch"><input type="checkbox" name="pingStaff"${t.pingStaff ? ' checked' : ''}> Ping the staff role for new tickets</label>
             <button class="primary" type="submit">Save</button>`
           : '<p class="muted">Tickets aren\'t set up here yet. Run <code>/ticket setup</code> in Discord to choose the ticket channel; then the rest can be changed here.</p>'}
@@ -547,7 +547,7 @@ export async function moderation(main, ctx) {
                   .map((t) => `<tr><td>${String(t.number).padStart(4, '0')}</td><td>${esc(t.subject)}</td><td><span class="tag ${esc(t.status)}">${esc(t.status.toUpperCase())}</span></td>
                     <td>${esc(t.opener)}</td><td>${esc(t.claimer ?? '—')}</td><td title="${esc(dateTime(t.createdAt))}">${esc(ago(t.createdAt))}</td><td>${t.closedAt ? esc(ago(t.closedAt)) : '—'}</td></tr>`)
                   .join('')}</tbody></table></div>
-                <p class="muted small">Tickets are handled in their Discord threads; this list is read-only.</p>`
+                <p class="muted small">Tickets are handled in their Discord channels; this list is read-only.</p>`
               : '<div class="empty">No tickets here.</div>'}`
           : '<div class="empty">Tickets aren\'t set up in this server.</div>'}
       </div>
