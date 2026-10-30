@@ -1,0 +1,15 @@
+# DaemonBot word filter
+# Messages containing anything below are deleted (members with Administrator are exempt).
+# One word or phrase per line. Lines starting with # are ignored.
+# Saving this file updates the bot within a few seconds. No restart needed.
+#
+# How matching works:
+#   - Whole words only: "coon" catches "coon" but not "raccoon".
+#   - Capitals, accents, l33t-speak (n1gg3r), stretched letters (fagggot) and
+#     dots/dashes between letters (f.a.g) are all caught automatically.
+#   - Plurals are caught automatically (word -> words).
+#   - End an entry with * to catch anything starting with it: badword* catches badwording.
+#     Careful: this can catch innocent longer words too.
+#   - Phrases work: put the words on one line separated by spaces.
+#
+# No words yet: waiting for approval of filter-words.proposed.txt.

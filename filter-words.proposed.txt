@@ -1,0 +1,127 @@
+# PROPOSED word filter list. NOT ACTIVE.
+# The bot does not read this file. Once approved, these entries go into filter-words.txt.
+#
+# Sources: slurs picked from the LDNOOBW list
+# (github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words), which is mostly
+# sexual terms and general swearing, plus well-known slurs that list doesn't cover.
+# General swearing (fuck, shit, etc.) and sexual terms are left out on purpose: this list is slurs only.
+#
+# Plurals, l33t-speak, stretched letters and accents are caught automatically, so variants
+# like "niggers", "n1gger" or "faggggot" don't need their own lines.
+#
+# Section A: clear slurs, low risk of deleting innocent messages
+# Section B: slurs that also have innocent meanings or reclaimed use. Review each one.
+
+# ===== A. Clear slurs =====
+
+# Anti-Black
+nigger
+nigga
+nigguh
+niglet
+nig nog
+jigaboo
+jiggaboo
+jiggerboo
+porch monkey
+jungle bunny
+junglebunny
+spearchucker
+golliwog
+darkie
+
+# Anti-Latino
+spic
+spick
+beaner
+wetback
+
+# Anti-Asian
+gook
+slant eye
+slanteye
+zipperhead
+ching chong
+
+# Anti-Arab / Middle Eastern / South Asian
+raghead
+towelhead
+sand nigger
+camel jockey
+
+# Antisemitic
+kike
+hymie
+christ killer
+
+# Anti-Indigenous
+injun
+
+# Other ethnic slurs
+wop
+dago
+pikey
+gyppo
+polack
+honky
+honkey
+
+# Anti-LGBTQ+
+faggot
+fagot
+fudgepacker
+fudge packer
+carpet muncher
+carpetmuncher
+poofter
+batty boy
+shemale
+troon
+
+# Ableist (not retard*, which would also catch "flame retardant")
+retard
+retarded
+mongoloid
+
+# Hate phrases
+sieg heil
+heil hitler
+
+# ===== B. Review carefully: these may delete innocent messages =====
+
+# coon:     also "coonhound" (safe, whole-word matching), but "coon" alone is used in hunting/raccoon talk
+coon
+# sambo:    also a Russian martial art
+sambo
+# chink:    also "a chink in the armor"
+chink
+# jap:      sometimes used as a plain abbreviation
+jap
+# paki:     slur in the UK, but also short for Pakistani in some places
+paki
+# heeb / yid: "yid" is also used by Tottenham Hotspur fans
+heeb
+yid
+# redskin:  also the old Washington team name, so sports talk will trip it
+redskin
+# squaw:    also in place names (e.g. "Squaw Valley", now renamed)
+squaw
+# kraut:    often used jokingly; would block "kraut-rock" (music genre). "sauerkraut" is safe
+kraut
+# fag:      British slang for a cigarette
+fag
+# dyke:     reclaimed by many lesbians; also a spelling of "dike" (embankment)
+dyke
+# tranny:   also car slang for a transmission
+tranny
+# poof:     also "poof, it's gone"
+poof
+# tard:     catches "tard" on its own only. "retard" above already covers the main slur
+tard
+# spastic / spaz: much stronger slur in the UK than in the US, where it means "clumsy"
+spastic
+spaz
+# mong:     UK ableist slur, rare in the US
+mong
+# white power: hate slogan, but can come up when discussing it
+white power

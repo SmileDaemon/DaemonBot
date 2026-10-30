@@ -1,0 +1,38 @@
+# Lavalink server config for DaemonBot.
+# Put Lavalink.jar in this folder (see README) and run:  npm run lavalink
+# The password must match LAVALINK_PASSWORD in the bot's .env.
+
+server:
+  port: 2333
+  address: 0.0.0.0
+
+lavalink:
+  server:
+    password: "youshallnotpass"
+    sources:
+      # YouTube is off: streaming it breaks YouTube's terms of service and it breaks often.
+      youtube: false
+      soundcloud: true
+      bandcamp: true
+      twitch: true
+      vimeo: true
+      http: true     # direct audio links and internet radio streams
+      nico: false
+      local: false
+    soundcloudSearchEnabled: true
+    youtubeSearchEnabled: false
+    bufferDurationMs: 400
+    frameBufferDurationMs: 5000
+    playerUpdateInterval: 5
+    gc-warnings: true
+
+metrics:
+  prometheus:
+    enabled: false
+
+logging:
+  file:
+    path: ./logs/
+  level:
+    root: INFO
+    lavalink: INFO

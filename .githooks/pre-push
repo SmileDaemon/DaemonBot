@@ -1,0 +1,49 @@
+#!/bin/sh
+#
+# Guard against pushing a change that would break the bot.
+#
+# Whatever is pushed is what the host runs on its next restart, so a broken
+# import is a bot that won't start. This runs before anything leaves the machine.
+#
+# Override for a deliberate exception:
+#     ALLOW_DESTRUCTIVE=1 git push
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+ZERO=$(git hash-object --stdin </dev/null | tr '0-9a-f' '0')
+
+fail() {
+    echo ""
+    echo "  PUSH BLOCKED: $1"
+    echo ""
+    echo "  If this is intentional, re-run as:"
+    echo "      ALLOW_DESTRUCTIVE=1 git push"
+    echo ""
+    exit 1
+}
+
+while read -r _local_ref local_sha remote_ref _remote_sha; do
+    # Nothing being pushed for this ref: a branch deletion.
+    if [ "$local_sha" = "$ZERO" ]; then
+        [ -n "$ALLOW_DESTRUCTIVE" ] || fail "this would DELETE the remote branch $remote_ref."
+        continue
+    fi
+
+    [ -n "$ALLOW_DESTRUCTIVE" ] && continue
+
+    if command -v node >/dev/null 2>&1; then
+        echo "pre-push: running the housekeeping sweep..."
+        if ! SWEEP_SKIP_ENV=1 node "$REPO_ROOT/scripts/sweep.js" >"$REPO_ROOT/.git/sweep.log" 2>&1; then
+            echo ""
+            echo "  PUSH BLOCKED: the housekeeping sweep found problems."
+            grep "FAIL" -A 4 "$REPO_ROOT/.git/sweep.log"
+            echo ""
+            echo "  Run it yourself to see everything:"
+            echo "      npm run sweep"
+            echo ""
+            exit 1
+        fi
+        echo "pre-push: sweep OK."
+    fi
+done
+
+exit 0

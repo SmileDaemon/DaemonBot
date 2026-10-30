@@ -1,0 +1,20 @@
+name: Housekeeping sweep
+
+# Runs on every push and pull request. A red X on GitHub means the sweep found
+# something that would break the bot; run `npm run sweep` locally to see it.
+on:
+  push:
+  pull_request:
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Housekeeping sweep
+        run: npm run sweep
