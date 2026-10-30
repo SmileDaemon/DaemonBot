@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { PermissionFlagsBits } from 'discord.js';
 import { endGuildSessions } from '../features/gameTracker.js';
+import { saveLevelSettings } from '../features/levels.js';
 import { optIn, optOut } from '../features/optOut.js';
 import { endGuildVoice } from '../features/voiceTracker.js';
 import { parseWordList, SAVED_WORDS } from '../features/wordFilter.js';
@@ -18,7 +19,7 @@ const LOOP_MODES = ['off', 'track', 'queue'];
 /** The Discord user an opt-out request is about, checked and named for the reply. */
 async function optOutTarget(client, userId) {
   const id = String(userId ?? '').trim();
-  if (!/^d{17,20}$/.test(id)) refuse("That isn't a Discord user ID. It's a 17 to 20 digit number.");
+  if (!/^\d{17,20}$/.test(id)) refuse("That isn't a Discord user ID. It's a 17 to 20 digit number.");
   const found = await client.users.fetch(id).catch(() => null);
   return { id, name: found ? `${found.username} (${id})` : id };
 }
@@ -77,12 +78,16 @@ const HANDLERS = {
       next[key] = Boolean(payload[key]);
       changes.push({ name: label, value: next[key] ? 'On' : 'Off', inline: true });
     }
+    // Levels keep all their settings in one object (see levelSettings); the panel only switches them on and off.
+    const levelsOn = 'levels' in payload ? Boolean(payload.levels) : null;
+    if (levelsOn !== null) changes.push({ name: 'Levels', value: levelsOn ? 'On' : 'Off', inline: true });
     if (!changes.length) refuse('Nothing to change.');
 
     // As with /config log: log before turning logging off, after turning it on.
     if (config.logChannelId && !next.logChannelId) await logPanelChange(guild, user, 'Settings changed', changes);
     guildConfig.set(guild.id, next);
-    if (next.gameTracking === false && config.gameTracking !== false) endGuildSessions(guild.client, guild.id);
+    if (levelsOn !== null) saveLevelSettings(guild.id, { enabled: levelsOn }); // after the set above, so it isn't overwritten
+    if (next.gameTracking === false && config.gameTracking !== false) endGuildSessions(guild.id);
     if (next.voiceTracking === false && config.voiceTracking !== false) endGuildVoice(guild.id);
     if (next.logChannelId) await logPanelChange(guild, user, 'Settings changed', changes);
     return 'Settings saved.';
@@ -194,11 +199,10 @@ const HANDLERS = {
     if (!guild) refuse('Pick the server they asked to be opted out of.');
     const { id, name } = await optOutTarget(client, userId);
     const already = isOptedOut(guild.id, id);
-    const gamesDeleted = optOut(guild, id); // also re-runs the deletion, in case anything slipped in
-    const games = gamesDeleted ? '' : ' Their game record is kept for the other servers that still count it, but this server no longer sees it.';
+    optOut(guild, id); // also re-runs the deletion, in case anything slipped in
     return already
-      ? `${name} was already opted out of ${guild.name}. Checked again that nothing is kept about them there.${games}`
-      : `Opted out ${name} in ${guild.name}: their statistics there are deleted, and they won't be tracked there again.${games}`;
+      ? `${name} was already opted out of ${guild.name}. Checked again that nothing is kept about them there.`
+      : `Opted out ${name} in ${guild.name}: their statistics there are deleted, and they won't be tracked there again.`;
   },
   async 'optout.remove'(guild, { userId }, _user, client) {
     if (!guild) refuse('Pick the server to undo the opt-out in.');

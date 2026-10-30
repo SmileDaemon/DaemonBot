@@ -166,7 +166,7 @@ const trackerOff = (guild, feature, label) =>
   !guild.features[feature]
     ? `${label} is off in the bot's .env.`
     : guild.settings[feature] === false
-      ? `${label} is turned off for this server (Settings).`
+      ? `${label} is turned off for this server.`
       : null;
 
 /** A row of tiny bars, one per day. */
@@ -329,36 +329,55 @@ function pairsSection(c, off) {
       .join('')}</tbody></table></div></div>`;
 }
 
-function connectedMembersSection(c, groupNo, query) {
+function connectedMembersSection(c, groupNo) {
   if (!c.members.length) return '';
-  const q = (query.get('member') ?? '').toLowerCase();
-  const list = c.members.filter((m) => !q || m.username.toLowerCase().includes(q));
   return `<div class="card wide"><h2>Closest connections</h2>
     <p class="muted small">Each member's strongest connections. Click a member to see them.</p>
-    <form class="row" id="membersearch" style="margin-bottom:10px"><input type="search" name="member" placeholder="Find a member…" value="${esc(query.get('member') ?? '')}"><button>Find</button></form>
-    ${list.length
-      ? `<div class="table-wrap"><table><thead><tr><th>Member</th><th class="num">Score</th><th class="num">Connections</th><th>Group</th></tr></thead><tbody>${list
-          .map((m) => `<tr><td><details><summary>${esc(m.username)}</summary>
-              <div class="small" style="margin-top:4px">${m.top.map((t) => `${esc(t.username)} <span class="muted">${num(t.score)}</span>`).join(' · ') || '<span class="muted">—</span>'}</div></details></td>
-            <td class="num">${num(m.score)}</td><td class="num">${num(m.connections)}</td><td>${m.groupId && groupNo.has(m.groupId) ? `Group ${groupNo.get(m.groupId)}` : '—'}</td></tr>`)
-          .join('')}</tbody></table></div>`
-      : '<div class="empty">No member matches that.</div>'}</div>`;
+    <div class="table-wrap"><table><thead><tr><th>Member</th><th class="num">Score</th><th class="num">Connections</th><th>Group</th></tr></thead><tbody>${c.members
+      .map((m) => `<tr><td><details><summary>${esc(m.username)}</summary>
+          <div class="small" style="margin-top:4px">${m.top.map((t) => `${esc(t.username)} <span class="muted">${num(t.score)}</span>`).join(' · ') || '<span class="muted">—</span>'}</div></details></td>
+        <td class="num">${num(m.score)}</td><td class="num">${num(m.connections)}</td><td>${m.groupId && groupNo.has(m.groupId) ? `Group ${groupNo.get(m.groupId)}` : '—'}</td></tr>`)
+      .join('')}</tbody></table></div></div>`;
+}
+
+/** Groups, pairs and members for one server's connections, or the part of them a search matched. */
+function connectionsGrid(c, empty) {
+  // A search result carries each group's number from the server's full list.
+  const groupNo = c.groupNumbers ? new Map(Object.entries(c.groupNumbers)) : new Map(c.groups.map((g, i) => [g.id, i + 1]));
+  return `<div class="grid">${groupsSection(c, empty, groupNo)}${pairsSection(c, empty)}${connectedMembersSection(c, groupNo)}</div>`;
+}
+
+/** A search box that puts the search in the page's address as ?q=, so it survives refreshes. */
+function searchForm(base, q, placeholder) {
+  return `<form class="row" id="connsearch" style="margin-bottom:12px" data-base="${esc(base)}">
+    <input type="search" name="q" placeholder="${esc(placeholder)}" value="${esc(q)}" style="flex:1;min-width:200px">
+    <button class="primary">Search</button>${q ? `<a class="button" href="${esc(base)}">Clear</a>` : ''}</form>`;
+}
+
+function wireSearchForm(main) {
+  main.querySelector('#connsearch')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const value = e.target.elements.q.value.trim();
+    location.hash = `${e.target.dataset.base}${value ? `?q=${encodeURIComponent(value)}` : ''}`;
+  });
 }
 
 export async function connections(main, { guildId, query }) {
+  const q = query.get('q') ?? '';
   main.innerHTML = loading;
-  const guild = await api(`/api/guilds/${guildId}`);
-  const c = guild.connections ?? { pairs: [], members: [], groups: [] };
+  // A search only ever looks at this server; the worker checks the viewer may see it.
+  const [guild, found] = await Promise.all([
+    api(`/api/guilds/${guildId}`),
+    q ? api(`/api/guilds/${guildId}/connections?q=${encodeURIComponent(q)}`) : null,
+  ]);
+  const c = found ?? guild.connections ?? { pairs: [], members: [], groups: [] };
   const off = trackerOff(guild, 'connectionTracking', 'Connection tracking');
-  const groupNo = new Map(c.groups.map((g, i) => [g.id, i + 1]));
-  main.innerHTML = `${offlineBanner(guild.bot)}${off && c.pairs.length ? `<div class="banner warn">${esc(off)} What was recorded so far is still shown.</div>` : ''}
+  main.innerHTML = `${offlineBanner(guild.bot)}${off && guild.connections?.pairs?.length ? `<div class="banner warn">${esc(off)} What was recorded so far is still shown.</div>` : ''}
     <p class="muted small">Scores: a reply is 3 points, a mention 2, a reaction 1, a back-and-forth chat 1, and every 10 minutes together in voice or the same game 1. Only counts are kept, never message text.</p>
-    <div class="grid">${groupsSection(c, off, groupNo)}${pairsSection(c, off)}${connectedMembersSection(c, groupNo, query)}</div>`;
-  main.querySelector('#membersearch')?.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const value = e.target.elements.member.value.trim();
-    location.hash = `#/g/${guildId}/connections${value ? `?member=${encodeURIComponent(value)}` : ''}`;
-  });
+    ${searchForm(`#/g/${guildId}/connections`, q, 'Find a member by name or user ID…')}
+    ${q ? `<p class="muted small">Groups, pairs and connections involving "${esc(q)}" in this server.</p>` : ''}
+    ${connectionsGrid(c, q ? `Nothing involving "${q}".` : off)}`;
+  wireSearchForm(main);
 }
 
 // ---------------------------------------------------------------------------
@@ -372,6 +391,10 @@ export async function settings(main, ctx) {
   const s = guild.settings;
   const t = s.tickets;
   const offNote = (feature) => (guild.features[feature] ? '' : ` <span class="muted small">(disabled in the bot's .env, so this has no effect)</span>`);
+  // Statistics are switched off by emailed request (Privacy Policy, section 7), so only the owner can change them.
+  const owner = ctx.me.user.isOwner;
+  const tracker = (key, label) =>
+    `<label class="switch"><input type="checkbox" name="${key}"${s[key] ? ' checked' : ''}${owner ? '' : ' disabled'}> ${label}${offNote(key)}</label>`;
 
   main.innerHTML = `${offlineBanner(guild.bot)}
     <div class="grid">
@@ -381,10 +404,10 @@ export async function settings(main, ctx) {
           <select name="logChannelId">${channelOptions(guild, s.logChannelId)}</select>
           <span class="muted small">Moderation, bot actions and server events are posted here. The panel's log history works either way.</span></label>
         <label class="switch"><input type="checkbox" name="wordFilter"${s.wordFilter ? ' checked' : ''}> Word filter${offNote('wordFilter')}</label>
-        <label class="switch"><input type="checkbox" name="gameTracking"${s.gameTracking ? ' checked' : ''}> Game tracking${offNote('gameTracking')}</label>
-        <label class="switch"><input type="checkbox" name="voiceTracking"${s.voiceTracking ? ' checked' : ''}> Voice tracking${offNote('voiceTracking')}</label>
-        <label class="switch"><input type="checkbox" name="activityTracking"${s.activityTracking ? ' checked' : ''}> Activity tracking${offNote('activityTracking')}</label>
-        <label class="switch"><input type="checkbox" name="connectionTracking"${s.connectionTracking ? ' checked' : ''}> Connection tracking${offNote('connectionTracking')}</label>
+        <label class="switch"><input type="checkbox" name="levels"${s.levels !== false ? ' checked' : ''}> Levels <span class="muted small">(XP and levels from activity)</span>${offNote('levels')}</label>
+        <h3>Statistics</h3>
+        ${tracker('gameTracking', 'Game tracking')}${tracker('voiceTracking', 'Voice tracking')}${tracker('activityTracking', 'Activity tracking')}${tracker('connectionTracking', 'Connection tracking')}
+        ${owner ? '' : `<p class="muted small" style="margin:0 0 10px">To turn statistics off for this server, email the bot's operator (Privacy Policy, section 7).</p>`}
         <button class="primary" type="submit">Save</button>
       </form>
       <form class="card" id="tickets">
@@ -405,8 +428,8 @@ export async function settings(main, ctx) {
     const f = e.target.elements;
     const payload = {};
     if ((f.logChannelId.value || null) !== s.logChannelId) payload.logChannelId = f.logChannelId.value || null;
-    for (const key of ['wordFilter', 'gameTracking', 'voiceTracking', 'activityTracking', 'connectionTracking']) {
-      if (f[key].checked !== Boolean(s[key])) payload[key] = f[key].checked;
+    for (const key of ['wordFilter', 'levels', 'gameTracking', 'voiceTracking', 'activityTracking', 'connectionTracking']) {
+      if (!f[key].disabled && f[key].checked !== (s[key] !== false)) payload[key] = f[key].checked;
     }
     if (!Object.keys(payload).length) return toast('Nothing changed.');
     act(e.submitter, guildId, 'settings.update', payload, () => settings(main, ctx));
@@ -585,7 +608,62 @@ export async function music(main, ctx) {
 //   The bot itself
 // ---------------------------------------------------------------------------
 
-export async function bot(main, { me }) {
+/** One server's records on a searched member. */
+function searchServer(s, me) {
+  const a = s.activity;
+  const parts = [];
+  if (a) {
+    parts.push(`<div><b>Activity</b>${num(a.last30)} messages in the last 30 days · ${num(a.messages)} in all · ${num(a.reactions)} reactions · active ${num(a.activeDaysLast30)} of the last 30 days${a.last ? ` · last active ${esc(ago(a.last))}` : ''}</div>`);
+  }
+  const detail = memberDetail(a ?? {}, s.voice, s.games);
+  if (s.connection) {
+    parts.push(`<div><b>Closest connections</b>${s.connection.top.map((t) => `${esc(t.username)} <span class="muted">${num(t.score)}</span>`).join(' · ') || '—'}${s.connection.group ? ` <span class="muted">· Group ${num(s.connection.group)}</span>` : ''}</div>`);
+  }
+  if (s.warnings.length) {
+    parts.push(`<div><b>Warnings (${num(s.warnings.length)})</b>${s.warnings.map((w) => `${esc(w.reason)} <span class="muted">· by ${esc(w.moderator)} · ${esc(dateTime(w.at))}</span>`).join('\n')}</div>`);
+  }
+  if (s.tickets.length) {
+    parts.push(`<div><b>Tickets (${num(s.tickets.length)})</b>${s.tickets.map((t) => `#${num(t.number)} ${esc(t.subject)} <span class="muted">· ${esc(t.status)} · ${esc(dateTime(t.createdAt))}</span>`).join('\n')}</div>`);
+  }
+  const link = me.guilds.some((g) => g.id === s.guild.id) ? `<a href="#/g/${esc(s.guild.id)}/overview">${esc(s.guild.name)}</a>` : esc(s.guild.name);
+  return `<div class="card"><h3>${link}</h3>
+    ${parts.length ? `<div class="log" style="border-left-color:var(--accent)"><div class="fields" style="grid-template-columns:1fr">${parts.join('')}</div></div>` : ''}
+    ${detail.includes('Nothing else recorded') ? '' : detail}
+    ${s.logs.length ? `<details style="margin-top:8px"><summary>Recent log entries (${num(s.logs.length)})</summary>${s.logs.map(logEntry).join('')}</details>` : ''}
+  </div>`;
+}
+
+export async function search(main, { me, query }) {
+  const q = query.get('q') ?? '';
+  const scope = me.user.isOwner ? 'every server the bot is in' : 'the servers you manage';
+  main.innerHTML = `<h1>Find a member</h1>
+    <p class="muted small">Search by name or Discord user ID across ${esc(scope)}. Shows what each server has on them: activity, voice, games, connections, warnings, tickets and log entries.</p>
+    <form class="row" id="usersearch" style="margin-bottom:16px">
+      <input type="search" name="q" placeholder="Name or user ID…" value="${esc(q)}" style="flex:1;min-width:200px" autofocus>
+      <button class="primary">Search</button>
+    </form>
+    <div id="results"></div>`;
+  main.querySelector('#usersearch').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const value = e.target.elements.q.value.trim();
+    location.hash = `#/search${value ? `?q=${encodeURIComponent(value)}` : ''}`;
+  });
+  if (!q) return;
+
+  const box = main.querySelector('#results');
+  box.innerHTML = loading;
+  const { people, servers } = await api(`/api/search?q=${encodeURIComponent(q)}`);
+  if (!people.length) {
+    box.innerHTML = `<div class="empty">Nobody matching "${esc(q)}" in ${num(servers)} server${servers === 1 ? '' : 's'}. Only members with recorded statistics, warnings or log entries can be found.</div>`;
+    return;
+  }
+  box.innerHTML = people
+    .map((p) => `<div class="card" style="margin-bottom:16px"><h2>${esc(p.username)} <span class="muted small">${esc(p.userId)}</span></h2>
+      <div class="grid">${p.servers.map((s) => searchServer(s, me)).join('')}</div></div>`)
+    .join('');
+}
+
+export async function bot(main) {
   main.innerHTML = loading;
   const { bot: b } = await api('/api/me');
   const uptime = b.startedAt ? ago(b.startedAt).replace(' ago', '') : '—';
@@ -604,19 +682,82 @@ export async function bot(main, { me }) {
       <div class="card kpi"><div class="value">${num(b.memoryMb)} MB</div><div class="label">Memory</div></div>
     </div>
     <div class="card"><h2>Features</h2><div class="row">
-      ${feature(f.serverLogs, 'Server logs')}${feature(f.wordFilter, 'Word filter')}${feature(f.gameTracking, 'Game tracking')}${feature(f.voiceTracking, 'Voice tracking')}${feature(f.activityTracking, 'Activity tracking')}${feature(f.connectionTracking, 'Connection tracking')}
+      ${feature(f.serverLogs, 'Server logs')}${feature(f.wordFilter, 'Word filter')}${feature(f.gameTracking, 'Game tracking')}${feature(f.voiceTracking, 'Voice tracking')}${feature(f.activityTracking, 'Activity tracking')}${feature(f.connectionTracking, 'Connection tracking')}${feature(f.levels, 'Levels')}
       ${feature(f.music, 'Music')}${feature(f.messageQuotes, 'Message previews')}
       ${b.lavalink ? `<span class="pill ${b.lavalink.connected ? 'good' : 'bad'}">Lavalink ${b.lavalink.connected ? 'connected' : 'not connected'}</span>` : ''}
     </div><p class="muted small">Turned on and off in the bot's .env file; restart the bot after changing it. Node ${esc(b.node ?? '')}.</p></div>
-    ${me.user.isOwner ? '<div class="card" id="words"><h2>Word filter list</h2><div class="empty">Loading…</div></div>' : ''}
-    ${me.user.isOwner ? `<div class="card" id="optouts"><h2>Statistics opt-outs</h2>
-      <p class="muted small">For members who emailed to opt out (Privacy Policy, section 7). Each server is requested separately: opting out deletes their activity, voice and connection statistics in the chosen server and stops collecting them there. Their game record is shared by all servers, so it's only deleted once no server counts it; until then the chosen server just stops seeing it. Check that the request comes from the account's owner first.</p>
-      <div class="row"><select id="optoutguild"><option value="">Server…</option>${me.guilds.map((g) => `<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('')}</select>
-      <input type="text" id="optoutid" inputmode="numeric" placeholder="Discord user ID" autocomplete="off">
-      <button class="primary" id="optoutadd">Opt out</button><button id="optoutremove">Undo opt-out</button></div></div>` : ''}
   </div>`;
+}
 
-  if (!me.user.isOwner) return;
+// ---------------------------------------------------------------------------
+//   Owner panel (the bot's owners only; the worker refuses everyone else)
+// ---------------------------------------------------------------------------
+
+const onOff = (on) => `<span class="pill ${on ? 'good' : ''}">${on ? 'On' : 'Off'}</span>`;
+
+function serversCard(servers) {
+  if (!servers.length) return '<div class="card wide"><h2>All servers</h2><div class="empty">The bot hasn\'t reported any servers yet.</div></div>';
+  const total = (key) => servers.reduce((n, s) => n + s.counts[key], 0);
+  const row = (s) => `<tr>
+      <td><a href="#/g/${esc(s.id)}/overview">${esc(s.name)}</a><div class="muted small">${esc(s.id)}</div></td>
+      <td class="num">${num(s.memberCount)}</td>
+      <td class="num">${num(s.counts.activity)}</td><td class="num">${num(s.counts.voice)}</td><td class="num">${num(s.counts.games)}</td>
+      <td class="num">${num(s.counts.pairs)}<span class="muted"> / ${num(s.counts.groups)}</span></td>
+      <td class="num">${num(s.counts.warnings)}</td><td class="num">${num(s.counts.tickets)}</td>
+      <td class="num">${num(s.counts.logs)}</td><td class="num">${num(s.counts.statDays)}</td>
+      <td>${s.updatedAt ? esc(ago(s.updatedAt)) : '—'}</td>
+      <td><button class="small" data-raw="${esc(s.id)}">Raw data</button></td></tr>
+    <tr class="rawrow" data-for="${esc(s.id)}" hidden><td colspan="12"><div class="small muted">Statistics:
+      activity ${onOff(s.settings.activityTracking)} voice ${onOff(s.settings.voiceTracking)} games ${onOff(s.settings.gameTracking)}
+      connections ${onOff(s.settings.connectionTracking)} levels ${onOff(s.settings.levels)}</div><div class="rawbox"></div></td></tr>`;
+  return `<div class="card wide"><h2>All servers</h2>
+    <p class="muted small">Everything the panel holds for each server the bot is in. Click a server to open its pages; you can open every server's pages. Raw data is the server's full latest report from the bot. Members with stats: activity · voice · games. Connections: pairs / groups (the 100 strongest pairs are kept). Logs: entries in the last 90 days. Stats: days of server totals.</p>
+    <div class="table-wrap"><table><thead><tr><th>Server</th><th class="num">Members</th><th class="num">Activity</th><th class="num">Voice</th><th class="num">Games</th><th class="num">Connections</th><th class="num">Warnings</th><th class="num">Tickets</th><th class="num">Logs</th><th class="num">Stats</th><th>Last report</th><th></th></tr></thead>
+    <tbody>${servers.map(row).join('')}
+      <tr><td><b>All ${num(servers.length)} servers</b></td><td class="num">${num(servers.reduce((n, s) => n + (s.memberCount ?? 0), 0))}</td>
+      <td class="num">${num(total('activity'))}</td><td class="num">${num(total('voice'))}</td><td class="num">${num(total('games'))}</td>
+      <td class="num">${num(total('pairs'))}<span class="muted"> / ${num(total('groups'))}</span></td><td class="num">${num(total('warnings'))}</td><td class="num">${num(total('tickets'))}</td>
+      <td class="num">${num(total('logs'))}</td><td></td><td></td><td></td></tr></tbody></table></div></div>`;
+}
+
+/** Shows (and offers to download) one server's latest report, loaded when first opened. */
+function wireRawData(main) {
+  main.querySelectorAll('[data-raw]').forEach((button) =>
+    button.addEventListener('click', async () => {
+      const id = button.dataset.raw;
+      const row = main.querySelector(`.rawrow[data-for="${CSS.escape(id)}"]`);
+      row.hidden = !row.hidden;
+      if (row.hidden) return delete row.dataset.dirty;
+      row.dataset.dirty = '1'; // keeps the page from refreshing while it's open
+      const box = row.querySelector('.rawbox');
+      if (box.dataset.loaded) return;
+      box.innerHTML = loading;
+      try {
+        const data = await api(`/api/guilds/${id}`);
+        delete data.bot;
+        const text = JSON.stringify(data, null, 2);
+        const href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+        box.innerHTML = `<div class="row" style="margin:8px 0"><a class="button small" href="${href}" download="daemonbot-${esc(id)}.json">Download JSON</a></div>
+          <pre style="max-height:420px;overflow:auto;white-space:pre-wrap;word-break:break-word">${esc(text)}</pre>`;
+        box.dataset.loaded = '1';
+      } catch (err) {
+        box.innerHTML = `<div class="banner bad">${esc(err.message)}</div>`;
+      }
+    }),
+  );
+}
+
+async function ownerConnectionResults(box, q) {
+  box.innerHTML = loading;
+  const { servers, searched } = await api(`/api/owner/connections?q=${encodeURIComponent(q)}`);
+  box.innerHTML = servers.length
+    ? servers
+        .map((s) => `<div class="card wide" style="margin-bottom:16px"><h2><a href="#/g/${esc(s.guild.id)}/connections?q=${encodeURIComponent(q)}">${esc(s.guild.name)}</a></h2>${connectionsGrid(s, `Nothing involving "${q}".`)}</div>`)
+        .join('')
+    : `<div class="empty">Nothing involving "${esc(q)}" in the connections of ${num(searched)} server${searched === 1 ? '' : 's'}.</div>`;
+}
+
+function wireOptOuts(main) {
   const optBox = main.querySelector('#optouts');
   const optId = optBox.querySelector('#optoutid');
   optId.addEventListener('input', () => (optId.dataset.dirty = '1')); // keeps the page from refreshing over the entry
@@ -631,8 +772,9 @@ export async function bot(main, { me }) {
       act(e.target, optGuild.value, type, { userId: optId.value.trim() }, clearId);
     });
   }
+}
 
-  const box = main.querySelector('#words');
+async function loadWordList(box) {
   const { text, updatedAt } = await api('/api/wordlist');
   if (text == null) {
     box.innerHTML = '<h2>Word filter list</h2><div class="empty">The bot hasn\'t sent its word list yet.</div>';
@@ -647,4 +789,28 @@ export async function bot(main, { me }) {
   box.querySelector('#savewords').addEventListener('click', (e) =>
     act(e.target, null, 'wordlist.set', { text: area.value }, () => delete area.dataset.dirty),
   );
+}
+
+export async function owner(main, { me, query }) {
+  const q = query.get('q') ?? '';
+  main.innerHTML = loading;
+  const { servers } = await api('/api/owner/servers');
+  main.innerHTML = `<h1>Owner Panel</h1>
+    <p class="muted small">Only the bot's owners see this page. Server admins only ever see their own servers.</p>
+    <div class="grid">
+      ${serversCard(servers)}
+      <div class="card wide" id="ownerconn"><h2>Search connections in every server</h2>
+        <p class="muted small">Groups, pairs and closest connections involving a member, in every server the bot is in. Each server's admins can only search their own server's connections.</p>
+        ${searchForm('#/owner', q, 'Name or user ID…')}<div id="connresults"></div></div>
+      <div class="card wide" id="optouts"><h2>Statistics opt-outs</h2>
+        <p class="muted small">For members who emailed to opt out (Privacy Policy, section 7). Each server is requested separately: opting out deletes their activity, voice, game, connection and level statistics in the chosen server and stops collecting them there. Check that the request comes from the account's owner first. When a server's administrators ask to turn statistics off for the whole server, switch them off in that server's Settings.</p>
+        <div class="row"><select id="optoutguild"><option value="">Server…</option>${me.guilds.map((g) => `<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('')}</select>
+        <input type="text" id="optoutid" inputmode="numeric" placeholder="Discord user ID" autocomplete="off">
+        <button class="primary" id="optoutadd">Opt out</button><button id="optoutremove">Undo opt-out</button></div></div>
+      <div class="card wide" id="words"><h2>Word filter list</h2><div class="empty">Loading…</div></div>
+    </div>`;
+  wireRawData(main);
+  wireSearchForm(main);
+  wireOptOuts(main);
+  await Promise.all([q ? ownerConnectionResults(main.querySelector('#connresults'), q) : null, loadWordList(main.querySelector('#words'))]);
 }

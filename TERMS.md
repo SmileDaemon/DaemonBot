@@ -6,7 +6,7 @@ These Terms of Service ("Terms") govern your use of DaemonBot (the "Bot") and it
 
 ## 1. The Service
 
-The Service provides moderation, logging, support tickets, announcements, embeds and server statistics for Discord servers ("Servers"), as described in the Privacy Policy. Features may change, be added or be removed at any time.
+The Service provides moderation, logging, support tickets, announcements, embeds, levels and server statistics for Discord servers ("Servers"), as described in the Privacy Policy. Features may change, be added or be removed at any time.
 
 ## 2. Eligibility and Discord's terms
 
@@ -18,7 +18,7 @@ If you add the Bot to a Server or manage its settings, you:
 
 - confirm that you have authority to do so for that Server;
 - are responsible for how the Service is configured and used in your Server, including moderation actions taken through it;
-- must let your Server's members know the Service is in use, for example by linking to the Privacy Policy in your rules or welcome channel, and must turn usage statistics off if you cannot lawfully use them where you or your members are;
+- must let your Server's members know the Service is in use, for example by linking to the Privacy Policy in your rules or welcome channel, and must ask us to turn usage statistics off (see the Privacy Policy, Section 7) if you cannot lawfully use them where you or your members are;
 - must use the statistics and logs only to run, moderate and understand your Server, and never to harass, stalk, dox or discriminate against anyone;
 - must not export or share members' data outside your Server's moderation team, except as the law requires.
 

@@ -2,6 +2,7 @@ import { ChannelType } from 'discord.js';
 import { activityIn } from '../features/activityTracker.js';
 import { connectionsIn } from '../features/connectionTracker.js';
 import { gamesOf, liveMs } from '../features/gameTracker.js';
+import { levelSettings } from '../features/levels.js';
 import { liveVoice, voiceOf } from '../features/voiceTracker.js';
 import { guildConfig, isOptedOut, tickets, warnings } from '../utils/store.js';
 
@@ -135,15 +136,14 @@ export function guildSnapshot(guild) {
     }))
     .sort((a, b) => b.warnings.length - a.warnings.length);
 
-  // Game records are per user (across every server); this server sees its own members' records.
-  // A session in progress is included, flagged with playingNow.
+  // Game time counted in this server only. A session in progress is included, flagged with playingNow.
   const games = new Map();
   const gameMembers = [];
   for (const member of guild.members.cache.values()) {
     if (member.user.bot) continue;
-    if (isOptedOut(guild.id, member.id)) continue; // their record may still exist for other servers
-    const played = Object.entries(gamesOf(member.id)).map(([game, s]) => {
-      const live = liveMs(member.id, game);
+    if (isOptedOut(guild.id, member.id)) continue;
+    const played = Object.entries(gamesOf(guild.id, member.id)).map(([game, s]) => {
+      const live = liveMs(guild.id, member.id, game);
       return {
         game,
         ms: s.ms + live,
@@ -189,6 +189,7 @@ export function guildSnapshot(guild) {
       voiceTracking: env('ENABLE_VOICE_TRACKING'),
       activityTracking: env('ENABLE_ACTIVITY_TRACKING'),
       connectionTracking: env('ENABLE_CONNECTION_TRACKING'),
+      levels: env('ENABLE_LEVELS'),
       music: env('ENABLE_MUSIC'),
     },
     settings: {
@@ -198,6 +199,7 @@ export function guildSnapshot(guild) {
       voiceTracking: config.voiceTracking !== false,
       activityTracking: config.activityTracking !== false,
       connectionTracking: config.connectionTracking !== false,
+      levels: levelSettings(guild.id).enabled,
       tickets: config.tickets ?? null,
     },
     channels,

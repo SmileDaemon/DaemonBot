@@ -33,7 +33,7 @@ export const guildConfig = createStore('config');
 /** Tickets, keyed by guild ID: { next, byThread: { [threadId]: ticket } } */
 export const tickets = createStore('tickets');
 
-/** Game activity, keyed by user ID (one record per person across all servers): { games: { [game]: { ms, sessions, days, lastDay, first, last } } } */
+/** Game activity, keyed by user ID, kept separately for each server: { guilds: { [guildId]: { [game]: { ms, sessions, days, lastDay, first, last } } } } */
 export const gameStats = createStore('games');
 
 /**
@@ -63,6 +63,9 @@ export const optOuts = createStore('optouts');
 
 /** Whether this person has opted out of statistics in this server. */
 export const isOptedOut = (guildId, userId) => Boolean(optOuts.get(guildId, {})[userId]);
+
+/** Levels, keyed by guild ID: { [userId]: { xp, lastMessageAt } }. Settings are in guildConfig.levels (on/off) and guildConfig.levelConfig. */
+export const levels = createStore('levels');
 
 /** Warnings, keyed by guild ID: { [userId]: [{ reason, moderatorId, at }] } */
 export const warnings = createStore('warnings');

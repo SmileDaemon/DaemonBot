@@ -22,21 +22,27 @@ The Service works within Discord, which handles your account under its own [Priv
 
 ### 2.2 Usage statistics
 
-Unless a Server's administrators turn them off, the Service keeps usage statistics for the Server's members:
+Unless a Server's administrators ask us to turn them off (Section 7), the Service keeps usage statistics for the Server's members:
 
 - **Messages:** message and reaction counts, and the channels they were posted in. Message text is not kept.
 - **Voice:** time spent in voice channels.
-- **Games:** games shown in a member's Discord activity status, and time spent in them.
+- **Games:** games shown in a member's Discord activity status, and time spent in them. Each Server keeps its own record of this.
 - **Interactions:** counts of replies, mentions and reactions between members, and time spent together in voice or games.
 - **Server totals:** daily totals such as messages, active members, joins and leaves.
 
 **Opting out:** members can opt out of these statistics in a Server by emailing smiledaemon77@gmail.com with the Server's name or ID and their Discord username or user ID. Statistics already kept about the member in that Server are deleted, and no more are kept there. Server totals are not affected.
 
-### 2.3 Panel users
+### 2.3 Levels
+
+Unless a Server's administrators turn them off, members earn experience points (XP) in each Server for sending messages and for time spent in voice with other members. The Service keeps each member's XP total and when they last earned XP from a message. Message text is not kept. Administrators can adjust a member's XP, and XP is kept while levels are turned off.
+
+Opting out of usage statistics in a Server (Section 2.2) also deletes the member's XP there and stops them earning XP in that Server.
+
+### 2.4 Panel users
 
 When you sign in to the Panel, Discord shares your user ID, username, avatar and Server list, which we use only to determine which Servers you can manage. We also keep a secure sign-in record and a record of changes you make through the Panel.
 
-### 2.4 What we do not collect
+### 2.5 What we do not collect
 
 We do not collect your email address, password, payment details, IP address (beyond what our hosting providers log automatically, see Section 5), direct messages, or messages in channels the Bot cannot see.
 
@@ -50,9 +56,10 @@ We do not sell personal information, use it for advertising, or share it with da
 
 ## 4. Who can see it
 
-- **Server administrators:** members with Manage Server or Administrator can see the information in Sections 2.1 and 2.2 for their own Server, through the Panel and the Server's log channel. For games and voice, they see only time spent in their own Server.
+- **Server administrators:** members with Manage Server or Administrator can see the information in Sections 2.1 and 2.2 for their own Server only, through the Panel and the Server's log channel. They cannot see anything recorded in other Servers, including a member's game or voice time there.
 - **The operator:** we can see the information for every Server the Bot is in.
 - **Moderators and staff:** anyone who can read a Server's log channel can see the entries posted there.
+- **Other members:** everyone in a Server can see members' levels and rank in that Server.
 
 ## 5. Service providers
 
@@ -75,6 +82,7 @@ These providers may store and process data in the United States and in other cou
 | Daily Server statistics | 400 days |
 | Daily message counts | 30 days |
 | Usage statistics | Until deleted on request, or until the Server's administrators delete them |
+| Levels and XP | Until the Server's administrators reset them, or until the member opts out |
 | Warnings and tickets | Until deleted by the Server's administrators or on request |
 | Entries posted in a Server's log channel | Until that Server's moderators delete them (they are ordinary Discord messages) |
 | Panel sign-ins | 7 days |
@@ -83,8 +91,8 @@ These providers may store and process data in the United States and in other cou
 
 ## 7. Your choices and rights
 
-- **Server administrators** can turn usage statistics off in the Panel's Settings. Collection of that information then stops for the Server.
-- **Members** can opt out of usage statistics in a Server by emailing smiledaemon77@gmail.com and naming that Server, as described in Section 2.2. They can also hide game activity by turning off Discord's *Share your activity status* setting. They can stop all collection in a Server by leaving it. Leaving does not delete information already collected. To have it deleted, contact us.
+- **Server administrators** can have usage statistics turned off for their Server the same way members opt out: by emailing smiledaemon77@gmail.com with the Server's name or ID. Collection of that information then stops for the Server.
+- **Members** can opt out of usage statistics and levels in a Server by emailing smiledaemon77@gmail.com and naming that Server, as described in Section 2.2. They can also hide game activity by turning off Discord's *Share your activity status* setting. They can stop all collection in a Server by leaving it. Leaving does not delete information already collected. To have it deleted, contact us.
 - **Access, correction and deletion:** you can ask us for a copy of the information we hold about you, or ask us to correct or delete it, by contacting us (Section 11). We will respond within 30 days. We may need to confirm that you control the Discord account in question.
 - **Objection:** depending on where you live, you may have the right to object to processing based on legitimate interests (Section 8), or to complain to your local data protection authority.
 

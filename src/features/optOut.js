@@ -2,6 +2,7 @@ import { activityStats, connectionStats, optOuts, voiceStats } from '../utils/st
 import { forgetActivity } from './activityTracker.js';
 import { forgetConnections } from './connectionTracker.js';
 import { forgetGames } from './gameTracker.js';
+import { forgetLevels } from './levels.js';
 import { forgetVoice } from './voiceTracker.js';
 
 // Members opt out by emailing the operator, once for each server (PRIVACY.md, section 7); the operator
@@ -9,7 +10,6 @@ import { forgetVoice } from './voiceTracker.js';
 
 /**
  * Stops tracking someone in this server and deletes the statistics kept about them there.
- * Returns whether their game record was deleted too (see forgetGames).
  */
 export function optOut(guild, userId) {
   const list = optOuts.get(guild.id, {});
@@ -20,7 +20,8 @@ export function optOut(guild, userId) {
   forgetVoice(guild.id, userId);
   forgetActivity(guild.id, userId);
   forgetConnections(guild, userId);
-  const gamesDeleted = forgetGames(guild.client, guild.id, userId);
+  forgetLevels(guild.id, userId);
+  forgetGames(guild.id, userId);
 
   // Their own records in this server
   const activity = activityStats.get(guild.id, {});
@@ -54,7 +55,6 @@ export function optOut(guild, userId) {
     for (const key of keys) delete pairs[key];
     connectionStats.set(guild.id, pairs);
   }
-  return gamesDeleted;
 }
 
 /** Lets someone be tracked in this server again, from now on. Deleted statistics don't come back. */

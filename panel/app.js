@@ -1,4 +1,4 @@
-import { api, clearToken, devLoginUrl, getToken, loginUrl, setToken } from './api.js';
+import { api, clearToken, devLoginUrl, getToken, inviteUrl, loginUrl, setToken } from './api.js';
 import { IS_LOCAL, NOT_CONFIGURED } from './config.js';
 import { ago, esc, initials, toast } from './util.js';
 import * as views from './views.js';
@@ -38,6 +38,7 @@ function signIn(message) {
       ? '<div class="banner bad">This panel isn\'t connected to its server yet: set DEPLOYED_API in panel/config.js (see MAINTAINING.md).</div>'
       : `<p class="muted">${esc(message ?? 'Sign in with Discord to manage the servers where you have Manage Server.')}</p>
          <a class="button primary" href="${esc(loginUrl())}">Sign in with Discord</a>
+         <p class="muted small">Don't have the bot yet? <a href="${esc(inviteUrl())}" target="_blank" rel="noopener">Add DaemonBot to your server</a>, then sign in.</p>
          ${IS_LOCAL ? `<div><a class="button" href="${esc(devLoginUrl())}">Local test sign-in</a></div>` : ''}`}
   </div></div></div>`;
 }
@@ -59,8 +60,11 @@ function shell() {
     <div class="layout">
       <nav class="sidebar">
         <a href="#/bot" data-guild="bot"><span class="icon">⚙</span><span class="name">Bot status</span></a>
+        <a href="#/search" data-guild="search"><span class="icon">?</span><span class="name">Find a member</span></a>
+        ${me.user.isOwner ? '<a href="#/owner" data-guild="owner"><span class="icon">★</span><span class="name">Owner Panel</span></a>' : ''}
         <div class="label">Servers</div>
         ${guildLinks || '<p class="muted small" style="padding:0 10px">No servers yet. You need Manage Server in a server the bot is in.</p>'}
+        <a href="${esc(inviteUrl())}" target="_blank" rel="noopener" title="Opens Discord. Reload this page once the bot has joined."><span class="icon">+</span><span class="name">Add to a server</span></a>
       </nav>
       <main id="main"></main>
     </div>`;
@@ -97,6 +101,18 @@ async function render() {
     main.innerHTML = `<div class="header-row">${guild.icon ? `<img class="icon" src="${esc(guild.icon)}" alt="">` : ''}<h1 style="margin:0">${esc(guild.name)}</h1></div>
       <nav class="tabs">${TABS.map(([t, label]) => `<a href="#/g/${esc(guild.id)}/${t}" class="${t === tab ? 'active' : ''}">${label}</a>`).join('')}</nav>
       <div id="view"></div>`;
+  } else if (parts[0] === 'owner' && me.user.isOwner) {
+    view = views.owner;
+    key = 'owner';
+    ctx = { ...ctx, page: 'owner' };
+    document.title = 'Owner Panel · DaemonBot Panel';
+    main.innerHTML = '<div id="view"></div>';
+  } else if (parts[0] === 'search') {
+    view = views.search;
+    key = 'search';
+    ctx = { ...ctx, page: 'search' };
+    document.title = 'Find a member · DaemonBot Panel';
+    main.innerHTML = '<div id="view"></div>';
   } else if (parts[0] === 'bot' || !me.guilds.length) {
     view = views.bot;
     key = 'bot';
@@ -107,7 +123,7 @@ async function render() {
     return;
   }
 
-  document.querySelectorAll('.sidebar a').forEach((a) => a.classList.toggle('active', a.dataset.guild === (ctx.guildId ?? 'bot')));
+  document.querySelectorAll('.sidebar a').forEach((a) => a.classList.toggle('active', a.dataset.guild === (ctx.guildId ?? ctx.page ?? 'bot')));
   const target = document.getElementById('view');
   const run = async (first) => {
     try {

@@ -66,4 +66,5 @@ export async function sendCommand(guildId, type, payload = {}) {
 }
 
 export const loginUrl = () => `${API}/auth/login`;
+export const inviteUrl = () => `${API}/invite`;
 export const devLoginUrl = () => `${API}/auth/dev?site=${encodeURIComponent(location.origin + location.pathname)}`;

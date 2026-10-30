@@ -41,6 +41,10 @@ const COMMANDS = {
   'optout.remove': 'owner',
 };
 
+// Statistics are switched on and off at a server's request by email, like a member's opt-out, so only
+// the owner can change these settings.
+const TRACKERS = ['gameTracking', 'voiceTracking', 'activityTracking', 'connectionTracking'];
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -104,6 +108,7 @@ async function route(request, env, url) {
 
   if (path === '/') return json({ ok: true, service: 'DaemonBot control panel relay' });
   if (path === '/auth/login' && method === 'GET') return login(env, url);
+  if (path === '/invite' && method === 'GET') return invite(env);
   if (path === '/auth/callback' && method === 'GET') return callback(env, url);
   if (path === '/auth/dev' && method === 'GET') return devLogin(env, url);
   if (path === '/auth/logout' && method === 'POST') return logout(request, env);
@@ -115,6 +120,9 @@ async function route(request, env, url) {
 
     if (path === '/api/me' && method === 'GET') return me(env, session);
     if (path === '/api/wordlist' && method === 'GET') return getWordlist(env, session);
+    if (path === '/api/search' && method === 'GET') return search(env, session, url);
+    if (path === '/api/owner/servers' && method === 'GET') return ownerServers(env, session);
+    if (path === '/api/owner/connections' && method === 'GET') return ownerConnections(env, session, url);
     if (parts[1] === 'commands' && parts[2] && method === 'GET') return getCommand(env, session, parts[2]);
     if (path === '/api/commands' && method === 'POST') return postCommand(request, env, session, null);
 
@@ -125,6 +133,7 @@ async function route(request, env, url) {
       if (sub === '' && method === 'GET') return getGuild(env, guildId);
       if (sub === 'stats' && method === 'GET') return getStats(env, guildId, url);
       if (sub === 'logs' && method === 'GET') return getLogs(env, guildId, url);
+      if (sub === 'connections' && method === 'GET') return getConnections(env, guildId, url);
       if (sub === 'commands' && method === 'POST') return postCommand(request, env, session, guildId);
     }
   }
@@ -146,6 +155,15 @@ async function sha256(text) {
 }
 
 const redirectUri = (url) => `${url.origin}/auth/callback`;
+
+// What the bot asks for when it's added to a server. MAINTAINING.md → "Invite the bot" lists what each is for.
+const BOT_PERMISSIONS = '1460560719030';
+
+/** Sends someone to Discord's "Add to server" page, where they pick a server they manage. */
+function invite(env) {
+  const params = new URLSearchParams({ client_id: env.DISCORD_CLIENT_ID, scope: 'bot applications.commands', permissions: BOT_PERMISSIONS });
+  return Response.redirect(`https://discord.com/oauth2/authorize?${params}`, 302);
+}
 
 async function login(env, url) {
   const state = randomToken(16);
@@ -338,6 +356,151 @@ async function getLogs(env, guildId, url) {
   });
 }
 
+/**
+ * Finds members by name or user ID in every server the viewer can see (the owner: all of them) and
+ * gathers what each server has on them: activity, voice, games, connections, warnings, tickets and
+ * recent log entries. A server's admins only ever get their own servers' records.
+ */
+async function search(env, session, url) {
+  const q = (url.searchParams.get('q') ?? '').trim().toLowerCase();
+  if (q.length < 2) throw new HttpError(400, 'Type at least 2 characters of a name, or a user ID.');
+  const { results } = await env.DB.prepare('SELECT id, name, icon, snapshot FROM guilds ORDER BY name').all();
+  const guilds = results.filter((g) => session.isOwner || session.guildIds.includes(g.id));
+  const ids = JSON.stringify(guilds.map((g) => g.id));
+
+  const like = `%${q.replace(/[%_\\]/g, (c) => `\\${c}`)}%`;
+  const { results: logRows } = await env.DB.prepare(
+    `SELECT * FROM logs WHERE guild_id IN (SELECT value FROM json_each(?)) AND user LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT 300`,
+  )
+    .bind(ids, like)
+    .all();
+
+  const people = new Map(); // userId -> { userId, username, servers: [] }
+  for (const g of guilds) {
+    const s = JSON.parse(g.snapshot);
+    const found = new Map(); // userId -> name, for this server
+    const consider = (userId, username) => {
+      if (userId && (userId === q || username?.toLowerCase().includes(q))) found.set(userId, username);
+    };
+    for (const m of s.activity ?? []) consider(m.userId, m.username);
+    for (const m of s.voice?.members ?? []) consider(m.userId, m.username);
+    for (const m of s.gameMembers ?? []) consider(m.userId, m.username);
+    for (const m of s.connections?.members ?? []) consider(m.userId, m.username);
+    for (const w of s.warnings ?? []) consider(w.userId, w.username);
+    const logs = logRows.filter((r) => r.guild_id === g.id).map((r) => ({ ...r, user: JSON.parse(r.user) }));
+    for (const r of logs) if (r.user?.id && !found.has(r.user.id)) consider(r.user.id, r.user.tag);
+
+    for (const [userId, username] of [...found].slice(0, 25)) {
+      const groupNo = new Map((s.connections?.groups ?? []).map((grp, i) => [grp.id, i + 1]));
+      const connection = s.connections?.members?.find((m) => m.userId === userId) ?? null;
+      const person = people.get(userId) ?? { userId, username, servers: [] };
+      person.servers.push({
+        guild: { id: g.id, name: g.name, icon: g.icon },
+        activity: s.activity?.find((m) => m.userId === userId) ?? null,
+        voice: s.voice?.members?.find((m) => m.userId === userId) ?? null,
+        games: s.gameMembers?.find((m) => m.userId === userId) ?? null,
+        connection: connection && { ...connection, group: connection.groupId ? groupNo.get(connection.groupId) ?? null : null },
+        warnings: s.warnings?.find((w) => w.userId === userId)?.warnings ?? [],
+        tickets: (s.tickets?.list ?? []).filter((t) => t.opener === username),
+        logs: logs
+          .filter((r) => r.user?.id === userId)
+          .slice(0, 15)
+          .map((r) => ({ id: r.id, at: r.at, title: r.title, color: r.color, user: r.user, description: r.description, fields: r.fields ? JSON.parse(r.fields) : [] })),
+      });
+      people.set(userId, person);
+    }
+  }
+  return json({ query: q, servers: guilds.length, people: [...people.values()].slice(0, 25) });
+}
+
+// ---------------------------------------------------------------------------
+//   Connections search and the owner panel
+// ---------------------------------------------------------------------------
+
+const searchTerm = (url) => {
+  const q = (url.searchParams.get('q') ?? '').trim().toLowerCase();
+  if (q.length < 2) throw new HttpError(400, 'Type at least 2 characters of a name, or a user ID.');
+  return q;
+};
+
+/**
+ * The part of one server's connections that involves anyone matching `q` (a name or user ID): groups
+ * with a matching member, pairs with one on either side, and members who match or are close to one.
+ * groupNumbers keeps each group's number from the full list, so "Group 3" means the same everywhere.
+ */
+function filterConnections(c, q) {
+  const hit = (u) => Boolean(u) && (u.userId === q || (u.username ?? '').toLowerCase().includes(q));
+  const groups = c?.groups ?? [];
+  return {
+    groupNumbers: Object.fromEntries(groups.map((g, i) => [g.id, i + 1])),
+    groups: groups.filter((g) => g.members.some(hit)),
+    pairs: (c?.pairs ?? []).filter((p) => hit(p.a) || hit(p.b)),
+    members: (c?.members ?? []).filter((m) => hit(m) || m.top.some(hit)),
+  };
+}
+
+const hasMatches = (c) => c.groups.length + c.pairs.length + c.members.length > 0;
+
+/** Searches one server's connections. requireGuild has already checked the viewer may see this server. */
+async function getConnections(env, guildId, url) {
+  const q = searchTerm(url);
+  const row = await env.DB.prepare('SELECT snapshot FROM guilds WHERE id = ?').bind(guildId).first();
+  if (!row) throw new HttpError(404, "The bot hasn't reported this server yet.");
+  return json({ query: q, ...filterConnections(JSON.parse(row.snapshot).connections, q) });
+}
+
+function requireOwner(session) {
+  if (!session.isOwner) throw new HttpError(403, "Only the bot's owner can see that.");
+}
+
+/** Searches the connections of every server the bot is in. Owners only. */
+async function ownerConnections(env, session, url) {
+  requireOwner(session);
+  const q = searchTerm(url);
+  const { results } = await env.DB.prepare('SELECT id, name, icon, snapshot FROM guilds ORDER BY name').all();
+  const servers = results
+    .map((g) => ({ guild: { id: g.id, name: g.name, icon: g.icon }, ...filterConnections(JSON.parse(g.snapshot).connections, q) }))
+    .filter(hasMatches);
+  return json({ query: q, searched: results.length, servers });
+}
+
+/** Every server the bot is in, with how much of each kind of data is kept for it. Owners only. */
+async function ownerServers(env, session) {
+  requireOwner(session);
+  const [{ results: guilds }, { results: logCounts }, { results: statCounts }] = await Promise.all([
+    env.DB.prepare('SELECT id, name, icon, member_count, updated_at, snapshot FROM guilds ORDER BY name').all(),
+    env.DB.prepare('SELECT guild_id, COUNT(*) AS n, MIN(at) AS oldest FROM logs GROUP BY guild_id').all(),
+    env.DB.prepare('SELECT guild_id, COUNT(DISTINCT day) AS days FROM stats GROUP BY guild_id').all(),
+  ]);
+  const logsBy = new Map(logCounts.map((r) => [r.guild_id, r]));
+  const statsBy = new Map(statCounts.map((r) => [r.guild_id, r.days]));
+  return json({
+    servers: guilds.map((g) => {
+      const s = JSON.parse(g.snapshot);
+      return {
+        id: g.id,
+        name: g.name,
+        icon: g.icon,
+        memberCount: g.member_count,
+        updatedAt: g.updated_at,
+        settings: s.settings ?? {},
+        counts: {
+          activity: s.activity?.length ?? 0,
+          voice: s.voice?.members?.length ?? 0,
+          games: s.gameMembers?.length ?? 0,
+          pairs: s.connections?.pairs?.length ?? 0,
+          groups: s.connections?.groups?.length ?? 0,
+          warnings: (s.warnings ?? []).reduce((n, w) => n + (w.warnings?.length ?? 0), 0),
+          tickets: s.tickets?.list?.length ?? 0,
+          logs: logsBy.get(g.id)?.n ?? 0,
+          statDays: statsBy.get(g.id) ?? 0,
+        },
+        oldestLog: logsBy.get(g.id)?.oldest ?? null,
+      };
+    }),
+  });
+}
+
 async function getWordlist(env, session) {
   if (!session.isOwner) throw new HttpError(403, "Only the bot's owner can see the word list.");
   const row = await env.DB.prepare('SELECT text, updated_at FROM wordlist WHERE id = 1').first();
@@ -351,6 +514,9 @@ async function postCommand(request, env, session, guildId) {
   if (!scope) throw new HttpError(400, `Unknown change "${type}".`);
   if (scope === 'owner' && !session.isOwner) throw new HttpError(403, "Only the bot's owner can do that.");
   if (scope === 'guild' && !guildId) throw new HttpError(400, 'That change needs a server.');
+  if (type === 'settings.update' && !session.isOwner && TRACKERS.some((key) => key in (body.payload ?? {}))) {
+    throw new HttpError(403, "To turn statistics off for this server, email the bot's operator (Privacy Policy, section 7).");
+  }
   const payload = JSON.stringify(body.payload ?? {});
   if (payload.length > 100_000) throw new HttpError(413, 'That is too large.');
 

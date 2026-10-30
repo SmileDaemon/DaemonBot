@@ -43,13 +43,10 @@ function sampleGames(client) {
   const now = Date.now();
   const elapsed = Math.min(now - lastSample, FLUSH_MS * 2); // don't credit a long stall (sleep, lag) in full
   lastSample = now;
-  const playing = currentPlayers();
-  if (!playing.length) return;
   for (const guild of client.guilds.cache.values()) {
     if (!isTracking(guild.id)) continue;
     const byGame = new Map();
-    for (const [userId, games] of playing) {
-      if (!guild.members.cache.has(userId)) continue;
+    for (const [userId, games] of currentPlayers(guild.id)) {
       for (const game of games) byGame.set(game, [...(byGame.get(game) ?? []), userId]);
     }
     for (const [game, ids] of byGame) {

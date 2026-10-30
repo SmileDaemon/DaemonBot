@@ -221,7 +221,7 @@ summary::marker { color: var(--muted); }
 }
 
 @media (max-width: 760px) {
-  .layout { grid-template-columns: 1fr; }
+  .layout { grid-template-columns: 1fr; grid-template-rows: auto 1fr; } /* spare height goes to the page, not the icon strip */
   .sidebar { display: flex; overflow-x: auto; gap: 4px; border-right: 0; border-bottom: 1px dashed var(--border); padding: 8px; }
   .sidebar .label { display: none; }
   .sidebar a { flex: none; }
