@@ -39,19 +39,32 @@ Re-run `npm run deploy` whenever you add or change a command's options. When you
 Set in `.env`: `ENABLE_SERVER_LOGS` (server events in the log channel), `ENABLE_MESSAGE_QUOTES` (message-link previews), and `ENABLE_GAME_TRACKING`, `ENABLE_VOICE_TRACKING`, `ENABLE_ACTIVITY_TRACKING`, `ENABLE_CONNECTION_TRACKING` (the control panel's trackers, each also switched on or off per server in the panel). Game and voice time in progress is saved every 10 minutes and when the bot stops.
 
 ### Keeping it online
-The bot only runs while `npm start` is running. It's hosted on [Railway](https://railway.com) (Hobby plan, about $5/month), which redeploys it on every push to `main` that touches the bot's code. [`railway.json`](railway.json) holds the start command, the restart policy and which files trigger a redeploy. Setting it up (once):
+The bot only runs while `npm start` is running. It's hosted on an [Oracle Cloud](https://www.oracle.com/cloud/free/) Always Free VM ($0), where systemd keeps it running and restarts it if it crashes or the VM reboots. The [Deploy bot](.github/workflows/bot-deploy.yml) workflow updates it on every push to `main` that touches the bot's code. The files are in [`deploy/`](deploy). Setting it up (once):
 
-1. Sign up at railway.com with your GitHub account and pick the Hobby plan.
-2. **New Project → Deploy from GitHub repo →** `SmileDaemon/DaemonBot`. Let Railway's GitHub app see the repository if it asks.
-3. Open the service → **Variables → Raw Editor**, paste your `.env` and click Update. Leave out `LAVALINK_*` while music is shelved.
-4. Add a volume, so `data/` survives redeploys: right-click the project canvas → **Volume**, attach it to the service, and set the mount path to `/app/data`.
-5. Stop the bot on your PC (Ctrl+C) before the first deploy. Two copies would both answer every command and keep separate data.
-6. Deploy. The service's **Deployments → View logs** should show `Logged in as …` and `Control panel: syncing with …`. The bot needs no public domain, so leave Networking alone.
+1. Sign up at https://signup.cloud.oracle.com. The card is only for verification. Pick a home region near you: it can't be changed later.
+2. **Compute → Instances → Create instance:**
+   - Image: **Canonical Ubuntu 24.04**.
+   - Shape: **Ampere VM.Standard.A1.Flex**, 1 OCPU and 6 GB. If it says out of capacity, use **VM.Standard.E2.1.Micro** instead; it's also free and enough for the bot.
+   - SSH keys: **Paste public keys**, with the contents of `~/.ssh/daemonbot_oracle.pub` from your PC.
+   - Leave networking as it is. The bot needs no open ports.
+
+   Note the instance's **Public IP address**.
+3. Stop the bot on your PC (Ctrl+C). Two copies would both answer every command and keep separate data.
+4. From the project folder on your PC, with your VM's IP in place of `IP`:
+   ```bash
+   ssh -i ~/.ssh/daemonbot_oracle ubuntu@IP "git clone https://github.com/SmileDaemon/DaemonBot.git"
+   scp -i ~/.ssh/daemonbot_oracle -r .env data ubuntu@IP:DaemonBot/
+   ssh -i ~/.ssh/daemonbot_oracle ubuntu@IP "bash DaemonBot/deploy/setup-oracle.sh"
+   ```
+   The setup installs Node, the bot's packages and the `daemonbot` service, then starts it.
+5. For deploys on push, add `~/.ssh/daemonbot_deploy.pub` to the VM's `~/.ssh/authorized_keys`, then add three repository secrets (Settings → Secrets and variables → Actions): `ORACLE_HOST` (the IP), `ORACLE_SSH_KEY` (the contents of `~/.ssh/daemonbot_deploy`) and `ORACLE_HOST_KEY` (the last line the setup prints).
+
+On the VM, `journalctl -u daemonbot -f` follows the log, and `sudo systemctl restart daemonbot` restarts the bot. Oracle may reclaim Always Free VMs that sit almost idle for a week; upgrading the account to Pay As You Go stops that and still costs nothing within the free limits.
 
 Register commands (`npm run deploy`) from your PC as before: that talks to Discord directly and doesn't need the host.
 
 ### Data
-Warnings, tickets, game, voice, activity and connection stats, and per-server settings are saved as JSON in `data/`. Word list edits made in the control panel are saved as `data/filter-words.txt`, which takes over from the repo's `filter-words.txt` once it exists, so a redeploy can't undo them; delete it to go back to the repo's list. On Railway, `data/` is the volume. Back that folder up if you move hosts.
+Warnings, tickets, game, voice, activity and connection stats, and per-server settings are saved as JSON in `data/`. Word list edits made in the control panel are saved as `data/filter-words.txt`, which takes over from the repo's `filter-words.txt` once it exists, so a redeploy can't undo them; delete it to go back to the repo's list. Back that folder up if you move hosts.
 
 ### Adding commands
 Drop a file in any folder under `src/commands/` exporting `default { data, execute }` (see `src/commands/general/ping.js`), then `npm run deploy`.

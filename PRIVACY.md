@@ -63,7 +63,7 @@ The Service relies on these providers, each of which processes data under its ow
 | Discord Inc. | Platform and sign-in | Everything the Bot receives |
 | Cloudflare, Inc. | Hosts the Panel's server and database | Log entries, daily statistics, Server snapshots and Panel sessions |
 | GitHub, Inc. | Hosts the Panel's website | Standard web request logs |
-| Railway Corporation | Runs the Bot | Everything in Section 2 |
+| Oracle Corporation | Runs the Bot | Everything in Section 2 |
 
 These providers may store and process data in the United States and in other countries.
 

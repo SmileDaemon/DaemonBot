@@ -1,0 +1,20 @@
+# systemd unit for the bot on the Oracle VM. deploy/setup-oracle.sh installs it
+# as /etc/systemd/system/daemonbot.service, filling in USER and DIR.
+[Unit]
+Description=DaemonBot
+After=network-online.target
+Wants=network-online.target
+# Only start once .env has been copied up; the bot can't log in without it.
+ConditionPathExists=DIR/.env
+
+[Service]
+User=USER
+WorkingDirectory=DIR
+ExecStart=/usr/bin/node src/index.js
+Restart=always
+RestartSec=5
+# Time to save game and voice time in progress on SIGTERM before being killed.
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,57 @@
+name: Deploy bot
+
+# Updates the bot on the Oracle VM whenever its code changes on main, after the
+# housekeeping sweep passes. Needs three repository secrets (Settings → Secrets
+# and variables → Actions); until they exist, this skips without failing:
+#   ORACLE_HOST       the VM's public IP address
+#   ORACLE_SSH_KEY    a private key the VM accepts for the ubuntu user
+#   ORACLE_HOST_KEY   the VM's host key, printed by deploy/setup-oracle.sh
+on:
+  push:
+    branches: [main]
+    paths: ['src/**', 'package.json', 'package-lock.json', 'filter-words.txt', 'deploy/**', '.github/workflows/bot-deploy.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bot-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      HOST: ${{ secrets.ORACLE_HOST }}
+    steps:
+      - name: Check the VM is configured
+        id: configured
+        run: |
+          if [ -z "$HOST" ]; then
+            echo "::notice::ORACLE_HOST isn't set, so there's nowhere to deploy. See MAINTAINING.md → Keeping it online."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.configured.outputs.ok == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.configured.outputs.ok == 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - name: Housekeeping sweep
+        if: steps.configured.outputs.ok == 'true'
+        run: npm ci && npm run sweep
+      - name: Update and restart the bot
+        if: steps.configured.outputs.ok == 'true'
+        env:
+          SSH_KEY: ${{ secrets.ORACLE_SSH_KEY }}
+          HOST_KEY: ${{ secrets.ORACLE_HOST_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          echo "$HOST $HOST_KEY" > ~/.ssh/known_hosts
+          ssh ubuntu@"$HOST" 'cd ~/DaemonBot && git pull --ff-only && npm ci --omit=dev && sudo systemctl restart daemonbot && sleep 5 && systemctl is-active daemonbot'
