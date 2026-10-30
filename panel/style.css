@@ -57,6 +57,12 @@ h3 { font-size: .9rem; color: var(--muted); }
 .topbar .brand { font-weight: 700; display: flex; align-items: center; gap: 8px; color: var(--bright); }
 .topbar .brand::after { content: "_"; animation: blink 1s steps(1) infinite; margin-left: -6px; }
 .topbar .spacer { flex: 1; }
+.site-footer {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 8px;
+  padding: 16px; border-top: 1px dashed var(--border);
+}
+.site-footer a { color: var(--muted); }
+.site-footer a:hover { color: var(--bright); }
 .avatar { width: 26px; height: 26px; border-radius: 0; border: 1px solid var(--border); background: var(--surface-2); object-fit: cover; flex: none; filter: grayscale(1) sepia(1) hue-rotate(80deg) saturate(3); }
 .avatar.lg { width: 48px; height: 48px; }
 .layout { display: grid; grid-template-columns: 240px 1fr; min-height: calc(100vh - 49px); }
@@ -174,7 +180,7 @@ summary::marker { color: var(--muted); }
 .progress div { height: 100%; background: repeating-linear-gradient(to right, var(--accent) 0 6px, transparent 6px 8px); }
 
 /* ---- Sign-in and messages ---- */
-.center { min-height: 100vh; display: grid; place-items: center; padding: 16px; }
+.center { min-height: calc(100vh - 54px); /* leaves room for .site-footer */ display: grid; place-items: center; padding: 16px; }
 .signin { max-width: 460px; text-align: left; }
 .signin h1::after { content: "_"; animation: blink 1s steps(1) infinite; }
 .signin .button { margin-top: 12px; }

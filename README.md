@@ -124,3 +124,6 @@ Drop a file in any folder under `src/commands/` exporting `default { data, execu
 
 ## Housekeeping
 Run `npm run sweep` after any change. It checks that imports, commands, buttons, settings, docs and word lists all fit together, and that no token or leftover file is lying around. See [MAINTAINING.md](MAINTAINING.md).
+
+## Terms and privacy
+[TERMS.md](TERMS.md) and [PRIVACY.md](PRIVACY.md). Fill in the bracketed placeholders (your name, contact, bot host, governing law) before publishing them. Discord asks for links to both in the Developer Portal (your app → General Information) before a bot can be verified.
