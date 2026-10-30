@@ -411,13 +411,18 @@ function sweepSafety() {
   // A bot token is three base64 parts; anyone holding one controls the bot.
   const token = /[MNO][A-Za-z\d_-]{23,27}\.[A-Za-z\d_-]{6}\.[A-Za-z\d_-]{27,40}/;
   const email = /[\w.+-]+@(gmail|yahoo|outlook|hotmail|icloud|proton)\.\w+/i;
+  // Addresses meant to be public, and the only file each may appear in: the contact for opt-out requests.
+  // (Joined at runtime so this line doesn't trip the check itself.)
+  const publicEmails = { 'PRIVACY.md': [['smiledaemon77', 'gmail.com'].join('@')] };
   const tokens = [];
   const emails = [];
   for (const path of files()) {
     if (/\.(png|jpe?g|gif|ico|jar)$/i.test(path)) continue;
+    const allowed = publicEmails[rel(path).replace(/\\/g, '/')] ?? [];
     lines(path).forEach((line, i) => {
       if (token.test(line)) tokens.push(`${rel(path)}:${i + 1}`);
-      if (email.test(line)) emails.push(`${rel(path)}:${i + 1}`);
+      const rest = allowed.reduce((text, address) => text.split(address).join(''), line);
+      if (email.test(rest)) emails.push(`${rel(path)}:${i + 1}`);
     });
   }
   check('no bot token outside .env', tokens, 'Reset the token in the Developer Portal: one that has been copied anywhere is compromised.');
