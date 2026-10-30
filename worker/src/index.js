@@ -37,6 +37,8 @@ const COMMANDS = {
   'music.volume': 'guild',
   'music.loop': 'guild',
   'wordlist.set': 'owner',
+  'optout.add': 'owner',
+  'optout.remove': 'owner',
 };
 
 export default {

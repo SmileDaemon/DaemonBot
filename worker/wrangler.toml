@@ -11,17 +11,17 @@ compatibility_date = "2026-09-01"
 
 [vars]
 # Where the panel is published, e.g. https://yourname.github.io (no trailing slash)
-SITE_ORIGIN = "https://YOUR-GITHUB-NAME.github.io"
+SITE_ORIGIN = "https://smiledaemon.github.io"
 # The path under that origin, e.g. /DaemonBot/ for a project site
 SITE_PATH = "/DaemonBot/"
 # Developer Portal → your app → General Information → Application ID
-DISCORD_CLIENT_ID = "YOUR_CLIENT_ID"
+DISCORD_CLIENT_ID = "1565394759554568252"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "daemonbot-panel"
 # Printed by `npx wrangler d1 create daemonbot-panel`
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "d00fb052-6f50-43de-aa5a-a37383e765cd"
 migrations_dir = "migrations"
 
 # Daily cleanup: logs older than 90 days, expired sign-ins, old panel changes.

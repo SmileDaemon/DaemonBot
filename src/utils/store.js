@@ -9,12 +9,22 @@ function createStore(name) {
 
   return {
     get: (key, fallback) => data[key] ?? fallback,
+    keys: () => Object.keys(data),
     set(key, value) {
       data[key] = value;
-      mkdirSync(dataDir, { recursive: true });
-      writeFileSync(file, JSON.stringify(data, null, 2));
+      save();
+    },
+    delete(key) {
+      if (!(key in data)) return;
+      delete data[key];
+      save();
     },
   };
+
+  function save() {
+    mkdirSync(dataDir, { recursive: true });
+    writeFileSync(file, JSON.stringify(data, null, 2));
+  }
 }
 
 /** Per-server settings, keyed by guild ID: { logChannelId, wordFilter, tickets: { channelId, staffRoleId, queueChannelId, pingStaff } } */
@@ -43,6 +53,16 @@ export const activityStats = createStore('activity');
  * chats, gameMs, games: { [game]: ms }, first, last } }. Voice time together comes from voiceStats.
  */
 export const connectionStats = createStore('connections');
+
+/**
+ * Members who asked (by email, see PRIVACY.md) not to be counted in a server's activity, voice, game or
+ * connection statistics, keyed by guild ID: { [userId]: { at } }. Each server is requested separately.
+ * Added from the control panel's Bot page.
+ */
+export const optOuts = createStore('optouts');
+
+/** Whether this person has opted out of statistics in this server. */
+export const isOptedOut = (guildId, userId) => Boolean(optOuts.get(guildId, {})[userId]);
 
 /** Warnings, keyed by guild ID: { [userId]: [{ reason, moderatorId, at }] } */
 export const warnings = createStore('warnings');

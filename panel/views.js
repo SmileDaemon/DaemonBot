@@ -609,9 +609,29 @@ export async function bot(main, { me }) {
       ${b.lavalink ? `<span class="pill ${b.lavalink.connected ? 'good' : 'bad'}">Lavalink ${b.lavalink.connected ? 'connected' : 'not connected'}</span>` : ''}
     </div><p class="muted small">Turned on and off in the bot's .env file; restart the bot after changing it. Node ${esc(b.node ?? '')}.</p></div>
     ${me.user.isOwner ? '<div class="card" id="words"><h2>Word filter list</h2><div class="empty">Loading…</div></div>' : ''}
+    ${me.user.isOwner ? `<div class="card" id="optouts"><h2>Statistics opt-outs</h2>
+      <p class="muted small">For members who emailed to opt out (Privacy Policy, section 7). Each server is requested separately: opting out deletes their activity, voice and connection statistics in the chosen server and stops collecting them there. Their game record is shared by all servers, so it's only deleted once no server counts it; until then the chosen server just stops seeing it. Check that the request comes from the account's owner first.</p>
+      <div class="row"><select id="optoutguild"><option value="">Server…</option>${me.guilds.map((g) => `<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('')}</select>
+      <input type="text" id="optoutid" inputmode="numeric" placeholder="Discord user ID" autocomplete="off">
+      <button class="primary" id="optoutadd">Opt out</button><button id="optoutremove">Undo opt-out</button></div></div>` : ''}
   </div>`;
 
   if (!me.user.isOwner) return;
+  const optBox = main.querySelector('#optouts');
+  const optId = optBox.querySelector('#optoutid');
+  optId.addEventListener('input', () => (optId.dataset.dirty = '1')); // keeps the page from refreshing over the entry
+  const clearId = () => {
+    optId.value = '';
+    delete optId.dataset.dirty;
+  };
+  const optGuild = optBox.querySelector('#optoutguild');
+  for (const [button, type] of [['#optoutadd', 'optout.add'], ['#optoutremove', 'optout.remove']]) {
+    optBox.querySelector(button).addEventListener('click', (e) => {
+      if (!optGuild.value) return toast('Pick the server first.', true);
+      act(e.target, optGuild.value, type, { userId: optId.value.trim() }, clearId);
+    });
+  }
+
   const box = main.querySelector('#words');
   const { text, updatedAt } = await api('/api/wordlist');
   if (text == null) {

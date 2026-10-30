@@ -1,6 +1,6 @@
 import { Events } from 'discord.js';
 import { onShutdown } from '../utils/shutdown.js';
-import { guildConfig, voiceStats } from '../utils/store.js';
+import { guildConfig, isOptedOut, voiceStats } from '../utils/store.js';
 
 // Shorter visits (joining the wrong channel, a quick hop) don't count as a session.
 const MIN_SESSION_MS = 60_000;
@@ -107,9 +107,25 @@ export function endGuildVoice(guildId) {
   for (const [userId, stay] of [...stays]) if (stay.guildId === guildId) leave(userId, now);
 }
 
-/** Whether to track someone in this channel. The server's AFK channel isn't counted. */
+/**
+ * Someone opted out of this server: drop their stay there without saving it, and take them out of
+ * the company of everyone in its channels, so nobody's record there says they were with them.
+ */
+export function forgetVoice(guildId, userId) {
+  const stay = stays.get(userId);
+  if (stay?.guildId === guildId) {
+    flushChannel(stay.channelId, Date.now());
+    const ids = occupants.get(stay.channelId);
+    ids.delete(userId);
+    if (!ids.size) occupants.delete(stay.channelId);
+    stays.delete(userId);
+  }
+  for (const other of stays.values()) if (other.guildId === guildId) other.with.delete(userId);
+}
+
+/** Whether to track someone in this channel. The server's AFK channel and opted-out members aren't counted. */
 const trackable = (channel, member) =>
-  channel && !member?.user.bot && isTracking(channel.guild.id) && channel.id !== channel.guild.afkChannelId;
+  channel && member && !member.user.bot && !isOptedOut(channel.guild.id, member.id) && isTracking(channel.guild.id) && channel.id !== channel.guild.afkChannelId;
 
 export function registerVoiceTracker(client) {
   client.on(Events.VoiceStateUpdate, (before, after) => {

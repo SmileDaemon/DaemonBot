@@ -1,6 +1,6 @@
 import { Events } from 'discord.js';
 import { onShutdown } from '../utils/shutdown.js';
-import { connectionStats, guildConfig } from '../utils/store.js';
+import { connectionStats, guildConfig, isOptedOut } from '../utils/store.js';
 import { currentPlayers } from './gameTracker.js';
 import { liveVoice, voiceOf } from './voiceTracker.js';
 
@@ -27,7 +27,7 @@ const isTracking = (guildId) => guildConfig.get(guildId, {}).connectionTracking 
 const pairKey = (a, b) => (a < b ? `${a}-${b}` : `${b}-${a}`);
 
 function note(guildId, a, b, kind, amount = 1, game) {
-  if (a === b) return;
+  if (a === b || isOptedOut(guildId, a) || isOptedOut(guildId, b)) return;
   if (!pending.has(guildId)) pending.set(guildId, new Map());
   const pairs = pending.get(guildId);
   const key = pairKey(a, b);
@@ -294,6 +294,13 @@ export function connectionsIn(guild, nameOf) {
     members,
     groups,
   };
+}
+
+/** Drops interactions not yet saved in this server that involve someone who opted out of it. */
+export function forgetConnections(guild, userId) {
+  const pairs = pending.get(guild.id);
+  if (pairs) for (const key of pairs.keys()) if (key.split('-').includes(userId)) pairs.delete(key);
+  for (const [channelId, last] of lastSpeaker) if (last.userId === userId && guild.channels.cache.has(channelId)) lastSpeaker.delete(channelId);
 }
 
 export function registerConnectionTracker(client) {

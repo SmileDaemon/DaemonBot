@@ -1,6 +1,6 @@
 import { Events } from 'discord.js';
 import { onShutdown } from '../utils/shutdown.js';
-import { activityStats, guildConfig } from '../utils/store.js';
+import { activityStats, guildConfig, isOptedOut } from '../utils/store.js';
 
 // Messages arrive far too often to rewrite the data file for each one, so counts are batched.
 const FLUSH_MS = 60_000;
@@ -18,6 +18,7 @@ const isTracking = (guildId) => guildConfig.get(guildId, {}).activityTracking !=
 export const activityIn = (guildId) => activityStats.get(guildId, {});
 
 function note(guildId, userId, kind, channelId) {
+  if (isOptedOut(guildId, userId)) return;
   if (!pending.has(guildId)) pending.set(guildId, new Map());
   const users = pending.get(guildId);
   const p = users.get(userId) ?? { messages: 0, reactions: 0, channels: new Map(), at: 0 };
@@ -49,6 +50,11 @@ function flush() {
     activityStats.set(guildId, data);
   }
   pending.clear();
+}
+
+/** Drops counts not yet saved for someone who opted out of this server. */
+export function forgetActivity(guildId, userId) {
+  pending.get(guildId)?.delete(userId);
 }
 
 export function registerActivityTracker(client) {

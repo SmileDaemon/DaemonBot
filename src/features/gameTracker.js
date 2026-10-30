@@ -1,6 +1,6 @@
 import { ActivityType, Events } from 'discord.js';
 import { onShutdown } from '../utils/shutdown.js';
-import { gameStats, guildConfig } from '../utils/store.js';
+import { gameStats, guildConfig, isOptedOut } from '../utils/store.js';
 
 // Shorter stretches (a game launcher flickering, a quick crash) don't count as a session.
 const MIN_SESSION_MS = 60_000;
@@ -81,9 +81,24 @@ function checkpoint() {
 export function endGuildSessions(client, guildId) {
   const now = Date.now();
   for (const userId of [...active.keys()]) {
-    const stillTracked = client.guilds.cache.some((g) => g.id !== guildId && isTracking(g.id) && g.members.cache.has(userId));
-    if (!stillTracked) endSessions(userId, now);
+    if (!trackedElsewhere(client, guildId, userId)) endSessions(userId, now);
   }
+}
+
+/** Whether a server other than this one still counts this person's games. */
+const trackedElsewhere = (client, guildId, userId) =>
+  client.guilds.cache.some((g) => g.id !== guildId && isTracking(g.id) && !isOptedOut(g.id, userId) && g.members.cache.has(userId));
+
+/**
+ * Someone opted out of this server. Their game record is shared by every server, so it's kept while
+ * another server still counts their games (this server's panel just stops showing it). Otherwise their
+ * sessions in progress and their record are dropped. Returns whether the record was deleted.
+ */
+export function forgetGames(client, guildId, userId) {
+  if (trackedElsewhere(client, guildId, userId)) return false;
+  active.delete(userId);
+  gameStats.delete(userId);
+  return true;
 }
 
 /** Unsaved time (ms) of a session in progress, so /games can include it. */
@@ -99,6 +114,7 @@ export function registerGameTracker(client) {
   client.on(Events.PresenceUpdate, (_, presence) => {
     // Servers that turned tracking off are ignored; the user is still tracked through any other server.
     if (!presence.guild || !isTracking(presence.guild.id) || presence.user?.bot || presence.member?.user.bot) return;
+    if (isOptedOut(presence.guild.id, presence.userId)) return;
     try {
       update(presence.userId, presence);
     } catch (err) {
@@ -113,7 +129,7 @@ export function registerGameTracker(client) {
     for (const guild of client.guilds.cache.values()) {
       if (!isTracking(guild.id)) continue;
       for (const presence of guild.presences.cache.values()) {
-        if (!presence.user?.bot && !active.has(presence.userId)) update(presence.userId, presence);
+        if (!presence.user?.bot && !active.has(presence.userId) && !isOptedOut(guild.id, presence.userId)) update(presence.userId, presence);
       }
     }
   });

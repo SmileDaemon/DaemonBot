@@ -3,7 +3,7 @@ import { activityIn } from '../features/activityTracker.js';
 import { connectionsIn } from '../features/connectionTracker.js';
 import { gamesOf, liveMs } from '../features/gameTracker.js';
 import { liveVoice, voiceOf } from '../features/voiceTracker.js';
-import { guildConfig, tickets, warnings } from '../utils/store.js';
+import { guildConfig, isOptedOut, tickets, warnings } from '../utils/store.js';
 
 const env = (name) => process.env[name] === 'true';
 
@@ -21,6 +21,7 @@ function voiceSnapshot(guild) {
   const channels = new Map();
   for (const member of guild.members.cache.values()) {
     if (member.user.bot) continue;
+    if (isOptedOut(guild.id, member.id)) continue;
     const records = Object.entries(voiceOf(member.id)).filter(([, r]) => r.guildId === guild.id);
     const live = liveVoice(member.id);
     const inThisServer = live && guild.channels.cache.has(live.channelId);
@@ -140,6 +141,7 @@ export function guildSnapshot(guild) {
   const gameMembers = [];
   for (const member of guild.members.cache.values()) {
     if (member.user.bot) continue;
+    if (isOptedOut(guild.id, member.id)) continue; // their record may still exist for other servers
     const played = Object.entries(gamesOf(member.id)).map(([game, s]) => {
       const live = liveMs(member.id, game);
       return {

@@ -3,6 +3,7 @@ import { Events } from 'discord.js';
 import { count, drain, enableAnalytics, gauge, markActive, restore } from './analytics.js';
 import { runPanelCommand, WORDS_PATH } from './commands.js';
 import { guildSnapshot, musicState } from './snapshot.js';
+import { isOptedOut } from '../utils/store.js';
 
 const SYNC_MS = 10_000;
 // Unchanged snapshots are re-sent this often anyway, in case the panel's database was reset.
@@ -26,7 +27,7 @@ export function startPanel(client) {
   client.on(Events.MessageCreate, (message) => {
     if (!message.inGuild() || message.author.bot) return;
     count(message.guildId, 'messages', message.channelId);
-    markActive(message.guildId, message.author.id);
+    if (!isOptedOut(message.guildId, message.author.id)) markActive(message.guildId, message.author.id);
   });
   client.on(Events.GuildMemberAdd, (member) => count(member.guild.id, 'joins'));
   client.on(Events.GuildMemberRemove, (member) => count(member.guild.id, 'leaves'));

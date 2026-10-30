@@ -2,10 +2,11 @@ import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { PermissionFlagsBits } from 'discord.js';
 import { endGuildSessions } from '../features/gameTracker.js';
+import { optIn, optOut } from '../features/optOut.js';
 import { endGuildVoice } from '../features/voiceTracker.js';
 import { parseWordList } from '../features/wordFilter.js';
 import { COLORS, logEvent } from '../utils/logging.js';
-import { guildConfig, warnings } from '../utils/store.js';
+import { guildConfig, isOptedOut, warnings } from '../utils/store.js';
 
 export const WORDS_PATH = fileURLToPath(new URL('../../filter-words.txt', import.meta.url));
 
@@ -15,6 +16,14 @@ const refuse = (message) => {
 };
 
 const LOOP_MODES = ['off', 'track', 'queue'];
+
+/** The Discord user an opt-out request is about, checked and named for the reply. */
+async function optOutTarget(client, userId) {
+  const id = String(userId ?? '').trim();
+  if (!/^d{17,20}$/.test(id)) refuse("That isn't a Discord user ID. It's a 17 to 20 digit number.");
+  const found = await client.users.fetch(id).catch(() => null);
+  return { id, name: found ? `${found.username} (${id})` : id };
+}
 
 /** Logs a panel change in the server's log channel, credited to whoever made it. */
 async function logPanelChange(guild, user, title, fields = []) {
@@ -181,6 +190,24 @@ const HANDLERS = {
     writeFileSync(WORDS_PATH, text.replace(/\r?\n/g, '\n'), 'utf8');
     return `Word list saved: ${count} entr${count === 1 ? 'y' : 'ies'}. The filter picks it up within a few seconds.`;
   },
+  // Owners only: applies an opt-out a member asked for by email. Each server is requested separately.
+  async 'optout.add'(guild, { userId }, _user, client) {
+    if (!guild) refuse('Pick the server they asked to be opted out of.');
+    const { id, name } = await optOutTarget(client, userId);
+    const already = isOptedOut(guild.id, id);
+    const gamesDeleted = optOut(guild, id); // also re-runs the deletion, in case anything slipped in
+    const games = gamesDeleted ? '' : ' Their game record is kept for the other servers that still count it, but this server no longer sees it.';
+    return already
+      ? `${name} was already opted out of ${guild.name}. Checked again that nothing is kept about them there.${games}`
+      : `Opted out ${name} in ${guild.name}: their statistics there are deleted, and they won't be tracked there again.${games}`;
+  },
+  async 'optout.remove'(guild, { userId }, _user, client) {
+    if (!guild) refuse('Pick the server to undo the opt-out in.');
+    const { id, name } = await optOutTarget(client, userId);
+    if (!isOptedOut(guild.id, id)) refuse(`${name} isn't opted out of ${guild.name}.`);
+    optIn(guild.id, id);
+    return `${name} is tracked in ${guild.name} again from now on. Statistics deleted earlier don't come back.`;
+  },
 };
 
 export const PANEL_COMMANDS = Object.keys(HANDLERS);
@@ -195,7 +222,7 @@ export async function runPanelCommand(client, command) {
       guild = client.guilds.cache.get(command.guildId);
       if (!guild) refuse("I'm not in that server anymore.");
     }
-    const message = await handler(guild, command.payload ?? {}, command.user);
+    const message = await handler(guild, command.payload ?? {}, command.user, client);
     return { id: command.id, ok: true, message };
   } catch (err) {
     if (!(err instanceof Refused)) console.error(`Panel change ${command.type} failed:`, err);
