@@ -30,7 +30,7 @@ Unless a Server's administrators turn them off, the Service keeps usage statisti
 - **Interactions:** counts of replies, mentions and reactions between members, and time spent together in voice or games.
 - **Server totals:** daily totals such as messages, active members, joins and leaves.
 
-**Opting out:** members can opt out of these statistics in a Server by emailing smiledaemon77@gmail.com with the Server's name or ID and their Discord username or user ID. Each Server needs its own request. Statistics already kept about the member in that Server are deleted, and no more are kept there. Game statistics are shared across Servers, so they are deleted once the member has opted out of every Server they share with the Bot. Server totals are not affected.
+**Opting out:** members can opt out of these statistics in a Server by emailing smiledaemon77@gmail.com with the Server's name or ID and their Discord username or user ID. Statistics already kept about the member in that Server are deleted, and no more are kept there. Server totals are not affected.
 
 ### 2.3 Panel users
 
@@ -84,7 +84,7 @@ These providers may store and process data in the United States and in other cou
 ## 7. Your choices and rights
 
 - **Server administrators** can turn usage statistics off in the Panel's Settings. Collection of that information then stops for the Server.
-- **Members** can opt out of usage statistics in a Server by emailing smiledaemon77@gmail.com and naming that Server, as described in Section 2.2. Each Server needs its own request. They can also hide game activity by turning off Discord's *Share your activity status* setting. They can stop all collection in a Server by leaving it. Leaving does not delete information already collected. To have it deleted, contact us.
+- **Members** can opt out of usage statistics in a Server by emailing smiledaemon77@gmail.com and naming that Server, as described in Section 2.2. They can also hide game activity by turning off Discord's *Share your activity status* setting. They can stop all collection in a Server by leaving it. Leaving does not delete information already collected. To have it deleted, contact us.
 - **Access, correction and deletion:** you can ask us for a copy of the information we hold about you, or ask us to correct or delete it, by contacting us (Section 11). We will respond within 30 days. We may need to confirm that you control the Discord account in question.
 - **Objection:** depending on where you live, you may have the right to object to processing based on legitimate interests (Section 8), or to complain to your local data protection authority.
 
