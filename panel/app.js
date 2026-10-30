@@ -10,6 +10,7 @@ const TABS = [
   ['analytics', 'Analytics'],
   ['activity', 'Activity'],
   ['connections', 'Connections'],
+  ['serverstats', 'Server Stats'],
   ['settings', 'Settings'],
   ['moderation', 'Moderation'],
   ['logs', 'Logs'],
@@ -92,14 +93,16 @@ async function render() {
   let ctx = { me, query };
   let key;
   if (parts[0] === 'g' && me.guilds.some((g) => g.id === parts[1])) {
-    const tab = TABS.some(([t]) => t === parts[2]) ? parts[2] : 'overview';
     const guild = me.guilds.find((g) => g.id === parts[1]);
+    // The Connections tab only shows once the bot's owner lets this server's admins see it.
+    const tabs = TABS.filter(([t]) => t !== 'connections' || guild.connectionsAccess !== false);
+    const tab = tabs.some(([t]) => t === parts[2]) ? parts[2] : 'overview';
     ctx = { ...ctx, guildId: guild.id };
     view = views[tab];
     key = tab;
     document.title = `${guild.name} · DaemonBot Panel`;
     main.innerHTML = `<div class="header-row">${guild.icon ? `<img class="icon" src="${esc(guild.icon)}" alt="">` : ''}<h1 style="margin:0">${esc(guild.name)}</h1></div>
-      <nav class="tabs">${TABS.map(([t, label]) => `<a href="#/g/${esc(guild.id)}/${t}" class="${t === tab ? 'active' : ''}">${label}</a>`).join('')}</nav>
+      <nav class="tabs">${tabs.map(([t, label]) => `<a href="#/g/${esc(guild.id)}/${t}" class="${t === tab ? 'active' : ''}">${label}</a>`).join('')}</nav>
       <div id="view"></div>`;
   } else if (parts[0] === 'owner' && me.user.isOwner) {
     view = views.owner;

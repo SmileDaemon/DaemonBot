@@ -91,6 +91,7 @@ export function startPanel(client) {
           activityTracking: process.env.ENABLE_ACTIVITY_TRACKING === 'true',
           connectionTracking: process.env.ENABLE_CONNECTION_TRACKING === 'true',
           levels: process.env.ENABLE_LEVELS === 'true',
+          statChannels: process.env.ENABLE_STAT_CHANNELS === 'true',
           music: process.env.ENABLE_MUSIC === 'true',
           messageQuotes: process.env.ENABLE_MESSAGE_QUOTES === 'true',
         },

@@ -4,6 +4,7 @@ import { PermissionFlagsBits } from 'discord.js';
 import { endGuildSessions } from '../features/gameTracker.js';
 import { saveLevelSettings } from '../features/levels.js';
 import { optIn, optOut } from '../features/optOut.js';
+import { MAX_NAME, MAX_STATS, saveStatChannels, STAT_TYPES, statTypeOffered } from '../features/statChannels.js';
 import { endGuildVoice } from '../features/voiceTracker.js';
 import { parseWordList, SAVED_WORDS } from '../features/wordFilter.js';
 import { COLORS, logEvent } from '../utils/logging.js';
@@ -119,6 +120,29 @@ const HANDLERS = {
     guildConfig.set(guild.id, { ...config, tickets });
     await logPanelChange(guild, user, 'Ticket settings changed', changes);
     return 'Ticket settings saved.';
+  },
+
+  async 'statchannels.set'(guild, { stats }, user) {
+    if (process.env.ENABLE_STAT_CHANNELS !== 'true') refuse("Stat channels are turned off in the bot's .env.");
+    if (!Array.isArray(stats) || stats.length > MAX_STATS) refuse(`A server can have up to ${MAX_STATS} stat channels.`);
+    const wanted = stats.map(({ type, roleId, name, channelId }) => {
+      if (!statTypeOffered(type)) refuse("This bot can't count that.");
+      if (STAT_TYPES[type].role && !guild.roles.cache.has(roleId)) refuse("That role doesn't exist anymore.");
+      const text = String(name ?? '').trim();
+      if (!text.includes('{count}')) refuse('Every channel name needs {count} in it, where the number goes.');
+      if (text.length > MAX_NAME) refuse(`Channel names can be up to ${MAX_NAME} characters.`);
+      return { type, roleId: STAT_TYPES[type].role ? roleId : null, name: text, channelId };
+    });
+    const needed = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.Connect];
+    if (!guild.members.me.permissions.has(needed)) refuse('I need View Channels, Manage Channels and Connect in this server first.');
+
+    const { added, removed } = await saveStatChannels(guild, wanted);
+    await logPanelChange(guild, user, 'Stat channels changed', [
+      { name: 'Channels', value: String(wanted.length), inline: true },
+      { name: 'Added', value: String(added), inline: true },
+      { name: 'Removed', value: String(removed), inline: true },
+    ]);
+    return 'Stat channels saved. New names and counts can take up to 5 minutes to show, because of a Discord limit.';
   },
 
   async 'warnings.clear'(guild, { userId }, user) {

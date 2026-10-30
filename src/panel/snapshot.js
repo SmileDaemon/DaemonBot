@@ -3,6 +3,7 @@ import { activityIn } from '../features/activityTracker.js';
 import { connectionsIn } from '../features/connectionTracker.js';
 import { gamesOf, liveMs } from '../features/gameTracker.js';
 import { levelSettings } from '../features/levels.js';
+import { statSettings } from '../features/statChannels.js';
 import { liveVoice, voiceOf } from '../features/voiceTracker.js';
 import { guildConfig, isOptedOut, tickets, warnings } from '../utils/store.js';
 
@@ -190,6 +191,7 @@ export function guildSnapshot(guild) {
       activityTracking: env('ENABLE_ACTIVITY_TRACKING'),
       connectionTracking: env('ENABLE_CONNECTION_TRACKING'),
       levels: env('ENABLE_LEVELS'),
+      statChannels: env('ENABLE_STAT_CHANNELS'),
       music: env('ENABLE_MUSIC'),
     },
     settings: {
@@ -201,6 +203,7 @@ export function guildSnapshot(guild) {
       connectionTracking: config.connectionTracking !== false,
       levels: levelSettings(guild.id).enabled,
       tickets: config.tickets ?? null,
+      statChannels: statSettings(guild),
     },
     channels,
     roles,

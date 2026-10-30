@@ -135,6 +135,8 @@ label.field { display: grid; gap: 4px; margin-bottom: 14px; }
 label.field > span { font-weight: 700; font-size: .85rem; }
 .switch { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
 .switch input { width: 16px; height: 16px; accent-color: var(--accent); }
+.stat-row { display: grid; gap: 6px; padding: 10px 0; border-top: 1px solid var(--border); }
+.stat-row:last-child { margin-bottom: 14px; border-bottom: 1px solid var(--border); }
 input[type=range] { accent-color: var(--accent); width: 180px; }
 
 .pill { display: inline-flex; align-items: center; gap: 6px; padding: 0 6px; font-size: .78rem; font-weight: 700; text-transform: uppercase; border: 1px solid currentColor; }

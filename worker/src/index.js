@@ -27,6 +27,7 @@ const MANAGE_GUILD = 0x20n;
 const COMMANDS = {
   'settings.update': 'guild',
   'tickets.update': 'guild',
+  'statchannels.set': 'guild',
   'warnings.clear': 'guild',
   'warnings.remove': 'guild',
   'music.pause': 'guild',
@@ -123,6 +124,7 @@ async function route(request, env, url) {
     if (path === '/api/search' && method === 'GET') return search(env, session, url);
     if (path === '/api/owner/servers' && method === 'GET') return ownerServers(env, session);
     if (path === '/api/owner/connections' && method === 'GET') return ownerConnections(env, session, url);
+    if (path === '/api/owner/connection-access' && method === 'POST') return setConnectionAccess(request, env, session);
     if (parts[1] === 'commands' && parts[2] && method === 'GET') return getCommand(env, session, parts[2]);
     if (path === '/api/commands' && method === 'POST') return postCommand(request, env, session, null);
 
@@ -130,10 +132,10 @@ async function route(request, env, url) {
       const guildId = parts[2];
       requireGuild(session, guildId);
       const sub = parts[3] ?? '';
-      if (sub === '' && method === 'GET') return getGuild(env, guildId);
+      if (sub === '' && method === 'GET') return getGuild(env, session, guildId);
       if (sub === 'stats' && method === 'GET') return getStats(env, guildId, url);
       if (sub === 'logs' && method === 'GET') return getLogs(env, guildId, url);
-      if (sub === 'connections' && method === 'GET') return getConnections(env, guildId, url);
+      if (sub === 'connections' && method === 'GET') return getConnections(env, session, guildId, url);
       if (sub === 'commands' && method === 'POST') return postCommand(request, env, session, guildId);
     }
   }
@@ -302,9 +304,10 @@ async function botStatus(env) {
 
 async function me(env, session) {
   const { results } = await env.DB.prepare('SELECT id, name, icon, member_count, updated_at FROM guilds ORDER BY name').all();
+  const allowed = await connectionAccessFor(env, session);
   const guilds = results
     .filter((g) => session.isOwner || session.guildIds.includes(g.id))
-    .map((g) => ({ id: g.id, name: g.name, icon: g.icon, memberCount: g.member_count }));
+    .map((g) => ({ id: g.id, name: g.name, icon: g.icon, memberCount: g.member_count, connectionsAccess: allowed(g.id) }));
   return json({
     user: { id: session.userId, username: session.username, avatar: session.avatar, isOwner: session.isOwner },
     guilds,
@@ -312,11 +315,15 @@ async function me(env, session) {
   });
 }
 
-async function getGuild(env, guildId) {
+async function getGuild(env, session, guildId) {
   const row = await env.DB.prepare('SELECT * FROM guilds WHERE id = ?').bind(guildId).first();
   if (!row) throw new HttpError(404, "The bot hasn't reported this server yet.");
+  const snapshot = JSON.parse(row.snapshot);
+  const connectionsAccess = (await connectionAccessFor(env, session))(guildId);
+  if (!connectionsAccess) delete snapshot.connections;
   return json({
-    ...JSON.parse(row.snapshot),
+    ...snapshot,
+    connectionsAccess,
     music: row.music ? JSON.parse(row.music) : null,
     updatedAt: row.updated_at,
     bot: await botStatus(env),
@@ -367,6 +374,7 @@ async function search(env, session, url) {
   const { results } = await env.DB.prepare('SELECT id, name, icon, snapshot FROM guilds ORDER BY name').all();
   const guilds = results.filter((g) => session.isOwner || session.guildIds.includes(g.id));
   const ids = JSON.stringify(guilds.map((g) => g.id));
+  const connectionsAllowed = await connectionAccessFor(env, session);
 
   const like = `%${q.replace(/[%_\\]/g, (c) => `\\${c}`)}%`;
   const { results: logRows } = await env.DB.prepare(
@@ -378,6 +386,7 @@ async function search(env, session, url) {
   const people = new Map(); // userId -> { userId, username, servers: [] }
   for (const g of guilds) {
     const s = JSON.parse(g.snapshot);
+    if (!connectionsAllowed(g.id)) delete s.connections;
     const found = new Map(); // userId -> name, for this server
     const consider = (userId, username) => {
       if (userId && (userId === q || username?.toLowerCase().includes(q))) found.set(userId, username);
@@ -442,7 +451,8 @@ function filterConnections(c, q) {
 const hasMatches = (c) => c.groups.length + c.pairs.length + c.members.length > 0;
 
 /** Searches one server's connections. requireGuild has already checked the viewer may see this server. */
-async function getConnections(env, guildId, url) {
+async function getConnections(env, session, guildId, url) {
+  if (!(await connectionAccessFor(env, session))(guildId)) throw new HttpError(403, NO_CONNECTIONS_ACCESS);
   const q = searchTerm(url);
   const row = await env.DB.prepare('SELECT snapshot FROM guilds WHERE id = ?').bind(guildId).first();
   if (!row) throw new HttpError(404, "The bot hasn't reported this server yet.");
@@ -451,6 +461,34 @@ async function getConnections(env, guildId, url) {
 
 function requireOwner(session) {
   if (!session.isOwner) throw new HttpError(403, "Only the bot's owner can see that.");
+}
+
+const NO_CONNECTIONS_ACCESS = "This server's connection data isn't available here. The bot's owner can allow it.";
+
+/** Which servers' connections this viewer may see: owners every one, admins only those the owner allowed. */
+async function connectionAccessFor(env, session) {
+  if (session.isOwner) return () => true;
+  const { results } = await env.DB.prepare('SELECT guild_id FROM connection_access').all();
+  const allowed = new Set(results.map((r) => r.guild_id));
+  return (guildId) => allowed.has(guildId);
+}
+
+/** Lets a server's admins see its connection data, or stops them. Owners only. */
+async function setConnectionAccess(request, env, session) {
+  requireOwner(session);
+  const body = await request.json().catch(() => null);
+  const guildId = String(body?.guildId ?? '');
+  if (!/^\d{17,20}$/.test(guildId)) throw new HttpError(400, 'That is not a server ID.');
+  const guild = await env.DB.prepare('SELECT name FROM guilds WHERE id = ?').bind(guildId).first();
+  if (!guild) throw new HttpError(404, "The bot hasn't reported that server.");
+  if (body.allowed) {
+    await env.DB.prepare('INSERT INTO connection_access (guild_id, granted_by, granted_at) VALUES (?, ?, ?) ON CONFLICT (guild_id) DO NOTHING')
+      .bind(guildId, session.userId, Date.now())
+      .run();
+  } else {
+    await env.DB.prepare('DELETE FROM connection_access WHERE guild_id = ?').bind(guildId).run();
+  }
+  return json({ guildId, allowed: Boolean(body.allowed), message: `${guild.name}'s admins ${body.allowed ? 'can now' : 'can no longer'} see its connection data.` });
 }
 
 /** Searches the connections of every server the bot is in. Owners only. */
@@ -467,13 +505,13 @@ async function ownerConnections(env, session, url) {
 /** Every server the bot is in, with how much of each kind of data is kept for it. Owners only. */
 async function ownerServers(env, session) {
   requireOwner(session);
-  const [{ results: guilds }, { results: logCounts }, { results: statCounts }] = await Promise.all([
+  const [{ results: guilds }, { results: statCounts }, { results: access }] = await Promise.all([
     env.DB.prepare('SELECT id, name, icon, member_count, updated_at, snapshot FROM guilds ORDER BY name').all(),
-    env.DB.prepare('SELECT guild_id, COUNT(*) AS n, MIN(at) AS oldest FROM logs GROUP BY guild_id').all(),
     env.DB.prepare('SELECT guild_id, COUNT(DISTINCT day) AS days FROM stats GROUP BY guild_id').all(),
+    env.DB.prepare('SELECT guild_id, granted_at FROM connection_access').all(),
   ]);
-  const logsBy = new Map(logCounts.map((r) => [r.guild_id, r]));
   const statsBy = new Map(statCounts.map((r) => [r.guild_id, r.days]));
+  const accessBy = new Map(access.map((r) => [r.guild_id, r.granted_at]));
   return json({
     servers: guilds.map((g) => {
       const s = JSON.parse(g.snapshot);
@@ -490,12 +528,10 @@ async function ownerServers(env, session) {
           games: s.gameMembers?.length ?? 0,
           pairs: s.connections?.pairs?.length ?? 0,
           groups: s.connections?.groups?.length ?? 0,
-          warnings: (s.warnings ?? []).reduce((n, w) => n + (w.warnings?.length ?? 0), 0),
-          tickets: s.tickets?.list?.length ?? 0,
-          logs: logsBy.get(g.id)?.n ?? 0,
           statDays: statsBy.get(g.id) ?? 0,
         },
-        oldestLog: logsBy.get(g.id)?.oldest ?? null,
+        connectionsAccess: accessBy.has(g.id),
+        connectionsAccessSince: accessBy.get(g.id) ?? null,
       };
     }),
   });

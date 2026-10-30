@@ -7,6 +7,7 @@ import { registerConnectionTracker } from './features/connectionTracker.js';
 import { registerGameTracker } from './features/gameTracker.js';
 import { registerLevels } from './features/levels.js';
 import { registerServerLogs } from './features/serverLogs.js';
+import { registerStatChannels } from './features/statChannels.js';
 import { registerVoiceTracker } from './features/voiceTracker.js';
 import { handleWordFilter, startWordFilter } from './features/wordFilter.js';
 import { setupMusic } from './music/lavalink.js';
@@ -27,6 +28,7 @@ const voiceEnabled = process.env.ENABLE_VOICE_TRACKING === 'true';
 const activityEnabled = process.env.ENABLE_ACTIVITY_TRACKING === 'true';
 const connectionsEnabled = process.env.ENABLE_CONNECTION_TRACKING === 'true';
 const levelsEnabled = process.env.ENABLE_LEVELS === 'true';
+const statChannelsEnabled = process.env.ENABLE_STAT_CHANNELS === 'true';
 const panelEnabled = Boolean(process.env.PANEL_URL && process.env.PANEL_SECRET);
 
 const intents = new Set([GatewayIntentBits.Guilds]);
@@ -58,6 +60,8 @@ if (activityEnabled || connectionsEnabled) {
 }
 // Levels count messages and voice time; neither needs a privileged intent. Each server can turn them off.
 if (levelsEnabled) intents.add(GatewayIntentBits.GuildMessages).add(GatewayIntentBits.GuildVoiceStates);
+// Stat channels count members, roles and who's in voice.
+if (statChannelsEnabled) intents.add(GatewayIntentBits.GuildMembers).add(GatewayIntentBits.GuildVoiceStates);
 // The control panel counts messages per channel; that doesn't need their content.
 if (panelEnabled) intents.add(GatewayIntentBits.GuildMessages);
 // Presence (what someone is playing) is a privileged intent too.
@@ -115,6 +119,7 @@ if (voiceEnabled) registerVoiceTracker(client);
 if (activityEnabled) registerActivityTracker(client);
 if (connectionsEnabled) registerConnectionTracker(client);
 if (levelsEnabled) registerLevels(client);
+if (statChannelsEnabled) registerStatChannels(client);
 
 process.on('unhandledRejection', (err) => console.error('Unhandled rejection:', err));
 
