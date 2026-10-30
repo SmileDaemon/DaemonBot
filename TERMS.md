@@ -2,11 +2,11 @@
 
 **Effective date:** October 29, 2026
 
-These Terms of Service ("Terms") govern your use of DaemonBot (the "Bot") and its web control panel (the "Panel"), together the "Service", operated by **[OPERATOR NAME]** ("we", "us"). By adding the Bot to a Discord server, using its features, or signing in to the Panel, you agree to these Terms and to our [Privacy Policy](PRIVACY.md). If you do not agree, do not use the Service.
+These Terms of Service ("Terms") govern your use of DaemonBot (the "Bot") and its web control panel (the "Panel"), together the "Service", operated by **SmileDaemon** ("we", "us"). By adding the Bot to a Discord server, using its features, or signing in to the Panel, you agree to these Terms and to our [Privacy Policy](PRIVACY.md). If you do not agree, do not use the Service.
 
 ## 1. The Service
 
-The Service provides moderation, logging, support tickets, announcements, embeds and analytics for Discord servers ("Servers"). This includes community activity statistics, as described in the Privacy Policy. Features may change, be added or be removed at any time.
+The Service provides moderation, logging, support tickets, announcements, embeds and server statistics for Discord servers ("Servers"), as described in the Privacy Policy. Features may change, be added or be removed at any time.
 
 ## 2. Eligibility and Discord's terms
 
@@ -18,7 +18,7 @@ If you add the Bot to a Server or manage its settings, you:
 
 - confirm that you have authority to do so for that Server;
 - are responsible for how the Service is configured and used in your Server, including moderation actions taken through it;
-- must let your Server's members know the Service is in use, for example by linking to the Privacy Policy in your rules or welcome channel, and must turn activity statistics off if you cannot lawfully use them where you or your members are;
+- must let your Server's members know the Service is in use, for example by linking to the Privacy Policy in your rules or welcome channel, and must turn usage statistics off if you cannot lawfully use them where you or your members are;
 - must use the statistics and logs only to run, moderate and understand your Server, and never to harass, stalk, dox or discriminate against anyone;
 - must not export or share members' data outside your Server's moderation team, except as the law requires.
 
@@ -58,7 +58,7 @@ You agree to compensate us for claims, losses and costs, including reasonable le
 
 ## 11. Governing law
 
-These Terms are governed by the laws of **[STATE / COUNTRY]**, without regard to its conflict-of-law rules. Disputes will be resolved in the courts located in **[COUNTY, STATE / COUNTRY]**, unless the law where you live gives you the right to bring a claim locally.
+These Terms are governed by the laws of **the United States**, without regard to its conflict-of-law rules. Disputes will be resolved in the courts located in **the United States**, unless the law where you live gives you the right to bring a claim locally.
 
 ## 12. Changes
 
@@ -66,4 +66,4 @@ We may update these Terms. If we make significant changes, we will update the ef
 
 ## 13. Contact
 
-**[OPERATOR NAME]**, [CONTACT EMAIL OR SUPPORT-SERVER LINK]
+**SmileDaemon**, smiledaemon77@gmail.com
