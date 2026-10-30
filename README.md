@@ -1,3 +1,5 @@
+<img src="images/DaemonBot.png" alt="DaemonBot" width="160">
+
 # DaemonBot
 
 A general-purpose Discord bot for moderation, custom embeds, announcements, support tickets and server logging, with a web control panel. Built on [discord.js](https://discord.js.org) v14.

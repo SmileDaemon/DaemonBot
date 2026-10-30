@@ -31,7 +31,7 @@ function takeHash() {
 
 function signIn(message) {
   app.innerHTML = `<div class="center"><div class="signin-wrap">
-    <img class="signin-avatar" src="daemonbot.jpg" alt="DaemonBot" width="160" height="160">
+    <img class="signin-avatar" src="daemonbot.png" alt="DaemonBot" width="160" height="160">
     <div class="card signin">
     <h1>DaemonBot control panel</h1>
     ${NOT_CONFIGURED && !IS_LOCAL
@@ -51,7 +51,7 @@ function shell() {
   const bot = me.bot;
   app.innerHTML = `
     <header class="topbar">
-      <div class="brand">${bot.avatar ? `<img class="avatar" src="${esc(bot.avatar)}" alt="">` : ''}${esc(bot.tag?.split('#')[0] ?? 'DaemonBot')}</div>
+      <div class="brand"><img class="logo" src="daemonbot.png" alt="">${esc(bot.tag?.split('#')[0] ?? 'DaemonBot')}</div>
       <span class="pill ${bot.online ? 'good' : 'bad'}" title="${bot.lastSeen ? `Last heard from ${esc(ago(bot.lastSeen))}` : ''}">${bot.online ? 'Online' : 'Offline'}</span>
       <span class="spacer"></span>
       <span class="who row">${me.user.avatar ? `<img class="avatar" src="${esc(me.user.avatar)}" alt="">` : ''}${esc(me.user.username)}</span>

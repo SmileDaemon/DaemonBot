@@ -57,6 +57,7 @@ h3 { font-size: .9rem; color: var(--muted); }
 .topbar .brand { font-weight: 700; display: flex; align-items: center; gap: 8px; color: var(--bright); }
 .topbar .brand::after { content: "_"; animation: blink 1s steps(1) infinite; margin-left: -6px; }
 .topbar .spacer { flex: 1; }
+.topbar .logo { width: 26px; height: 26px; border-radius: 50%; flex: none; }
 .site-footer {
   display: flex; flex-wrap: wrap; justify-content: center; gap: 8px;
   padding: 16px; border-top: 1px dashed var(--border);
@@ -200,7 +201,7 @@ summary::marker { color: var(--muted); }
   position: absolute; top: 0; left: 50%; z-index: 1;
   width: 160px; height: 160px; margin-left: -80px; border-radius: 50%; object-fit: cover;
   border: 1px solid var(--border); background: var(--bg);
-  box-shadow: 0 0 0 4px var(--bg), 0 0 24px rgb(170 60 255 / 45%), 0 18px 28px rgb(0 0 0 / 60%);
+  box-shadow: 0 0 0 4px var(--bg), 0 0 24px rgb(57 255 110 / 40%), 0 18px 28px rgb(0 0 0 / 60%);
   animation: float 4s ease-in-out infinite;
 }
 @keyframes float { 50% { transform: translateY(-8px); } }
