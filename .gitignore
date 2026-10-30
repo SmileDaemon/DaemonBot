@@ -7,3 +7,6 @@ worker/node_modules/
 worker/.wrangler/
 worker/.dev.vars
 *.psd
+# Generated from TERMS.md and PRIVACY.md by scripts/build-legal.js
+panel/terms.html
+panel/privacy.html

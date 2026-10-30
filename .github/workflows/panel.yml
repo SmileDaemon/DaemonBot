@@ -2,11 +2,12 @@ name: Publish control panel
 
 # Publishes panel/ to GitHub Pages whenever it changes on main, after the
 # housekeeping sweep passes. In the repository: Settings → Pages → Source:
-# "GitHub Actions". The bot and worker code are not published, only panel/.
+# "GitHub Actions". The bot and worker code are not published, only panel/
+# plus the terms and privacy pages built from TERMS.md and PRIVACY.md.
 on:
   push:
     branches: [main]
-    paths: ['panel/**', '.github/workflows/panel.yml']
+    paths: ['panel/**', 'TERMS.md', 'PRIVACY.md', 'scripts/build-legal.js', '.github/workflows/panel.yml']
   workflow_dispatch:
 
 permissions:
@@ -33,6 +34,8 @@ jobs:
       - run: npm ci
       - name: Housekeeping sweep
         run: npm run sweep
+      - name: Build terms and privacy pages
+        run: npm run legal
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

@@ -12,6 +12,7 @@
     "sweep": "node scripts/sweep.js",
     "lavalink": "cd lavalink && java -jar Lavalink.jar",
     "panel": "node scripts/serve-panel.js",
+    "legal": "node scripts/build-legal.js",
     "panel:api": "npm --prefix worker run dev"
   },
   "engines": {

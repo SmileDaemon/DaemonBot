@@ -9,9 +9,11 @@ import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { buildLegal } from './build-legal.js';
 
 const ROOT = resolve(fileURLToPath(new URL('../panel/', import.meta.url)));
 const PORT = Number(process.env.PORT) || 8020;
+buildLegal(); // terms.html and privacy.html, fresh from the Markdown on every start
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',

@@ -413,7 +413,7 @@ function sweepSafety() {
   const email = /[\w.+-]+@(gmail|yahoo|outlook|hotmail|icloud|proton)\.\w+/i;
   // Addresses meant to be public, and the only file each may appear in: the contact for opt-out requests.
   // (Joined at runtime so this line doesn't trip the check itself.)
-  const publicEmails = Object.fromEntries(['PRIVACY.md', 'TERMS.md'].map((f) => [f, [['smiledaemon77', 'gmail.com'].join('@')]]));
+  const publicEmails = Object.fromEntries(['PRIVACY.md', 'TERMS.md', 'panel/privacy.html', 'panel/terms.html'].map((f) => [f, [['smiledaemon77', 'gmail.com'].join('@')]]));
   const tokens = [];
   const emails = [];
   for (const path of files()) {
