@@ -1,0 +1,29 @@
+# Cloudflare Worker that relays between the github.io control panel and the bot.
+# Setup steps are in MAINTAINING.md → "Control panel". Secrets are set with
+# `npx wrangler secret put NAME`, never written here:
+#   DISCORD_CLIENT_SECRET   Developer Portal → your app → OAuth2 → Client Secret
+#   BOT_SECRET              any long random string; the same value goes in the bot's .env as PANEL_SECRET
+#   OWNER_IDS               your Discord user ID (comma-separate several); owners can edit the word list
+
+name = "daemonbot-panel"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+[vars]
+# Where the panel is published, e.g. https://yourname.github.io (no trailing slash)
+SITE_ORIGIN = "https://YOUR-GITHUB-NAME.github.io"
+# The path under that origin, e.g. /DaemonBot/ for a project site
+SITE_PATH = "/DaemonBot/"
+# Developer Portal → your app → General Information → Application ID
+DISCORD_CLIENT_ID = "YOUR_CLIENT_ID"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "daemonbot-panel"
+# Printed by `npx wrangler d1 create daemonbot-panel`
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+# Daily cleanup: logs older than 90 days, expired sign-ins, old panel changes.
+[triggers]
+crons = ["17 4 * * *"]

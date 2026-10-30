@@ -1,0 +1,5 @@
+# Copy to .dev.vars for `npm run dev`. Local only: never deployed.
+DEV_LOGIN=1
+BOT_SECRET=local-test-secret
+DISCORD_CLIENT_SECRET=unused-locally
+OWNER_IDS=100000000000000001

@@ -10,7 +10,9 @@
     "deploy": "node src/deploy-commands.js",
     "check": "node --check src/index.js",
     "sweep": "node scripts/sweep.js",
-    "lavalink": "cd lavalink && java -jar Lavalink.jar"
+    "lavalink": "cd lavalink && java -jar Lavalink.jar",
+    "panel": "node scripts/serve-panel.js",
+    "panel:api": "npm --prefix worker run dev"
   },
   "engines": {
     "node": ">=20.11"

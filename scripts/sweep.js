@@ -46,7 +46,7 @@ const read = (path) => readFileSync(path, 'utf8');
 const lines = (path) => read(path).split(/\r?\n/);
 
 // Never swept: installed packages, runtime data, logs, and the secrets file.
-const SKIP = new Set(['node_modules', '.git', '.claude', 'data', 'lavalink/logs', '.env']);
+const SKIP = new Set(['node_modules', '.git', '.claude', 'data', 'lavalink/logs', '.env', 'worker/node_modules', 'worker/.wrangler', 'worker/.dev.vars']);
 
 /** Every project file, so nothing installed or generated is swept. */
 function files(dir = ROOT) {
@@ -300,6 +300,51 @@ function sweepSettings(commands) {
 }
 
 // ---------------------------------------------------------------------------
+//   The control panel
+// ---------------------------------------------------------------------------
+
+/**
+ * The panel (panel/), its worker (worker/) and the bot (src/panel/) are three
+ * programs that never share code, so nothing but this keeps their list of
+ * changes in step. A change the panel sends that the worker doesn't allow, or
+ * the bot can't handle, fails only when someone clicks it.
+ */
+async function sweepPanel() {
+  console.log('\nTHE CONTROL PANEL');
+  const workerPath = join(ROOT, 'worker', 'src', 'index.js');
+  if (!existsSync(workerPath)) return;
+
+  const block = read(workerPath).match(/const COMMANDS = \{([^}]*)\}/)?.[1] ?? '';
+  const allowed = new Set([...block.matchAll(/'([\w.]+)':/g)].map((m) => m[1]));
+  const { PANEL_COMMANDS } = await import(new URL('../src/panel/commands.js', import.meta.url));
+  const handled = new Set(PANEL_COMMANDS);
+
+  const sent = new Map(); // command -> where the panel sends it
+  for (const path of files().filter((p) => rel(p).startsWith('panel/') && p.endsWith('.js'))) {
+    lines(path).forEach((line, i) => {
+      for (const m of line.matchAll(/(?:act\([^,]*,[^,]*,\s*|data-cmd="(?:\$\{[^}]*\?\s*)?|:\s*)'([a-z]+\.[a-z]+)'/g)) sent.set(m[1], `${rel(path)}:${i + 1}`);
+      for (const m of line.matchAll(/data-cmd="([a-z]+\.[a-z]+)"/g)) sent.set(m[1], `${rel(path)}:${i + 1}`);
+    });
+  }
+
+  check('the worker and the bot know the same panel changes', [
+    ...[...allowed].filter((c) => !handled.has(c)).map((c) => `${c}: the worker allows it, the bot has no handler`),
+    ...[...handled].filter((c) => !allowed.has(c)).map((c) => `${c}: the bot handles it, the worker refuses it`),
+  ], 'COMMANDS in worker/src/index.js and HANDLERS in src/panel/commands.js.');
+  check('every change the panel sends is one the worker allows',
+    [...sent].filter(([c]) => !allowed.has(c)).map(([c, where]) => `${where}  ${c}`));
+
+  const toml = existsSync(join(ROOT, 'worker', 'wrangler.toml')) ? read(join(ROOT, 'worker', 'wrangler.toml')) : '';
+  check('no secret is written in wrangler.toml',
+    [...toml.matchAll(/^\s*((DISCORD_CLIENT_SECRET|BOT_SECRET|OWNER_IDS|DEV_LOGIN)\s*=)/gm)].map((m) => m[2]),
+    'Secrets go in with `npx wrangler secret put NAME`. DEV_LOGIN belongs only in worker/.dev.vars.');
+
+  const config = read(join(ROOT, 'panel', 'config.js'));
+  const api = config.match(/DEPLOYED_API = '([^']*)'/)?.[1] ?? '';
+  check('the panel points at an https worker', /^https:\/\//.test(api) ? [] : [`DEPLOYED_API is "${api}"`]);
+}
+
+// ---------------------------------------------------------------------------
 //   The data
 // ---------------------------------------------------------------------------
 
@@ -417,6 +462,7 @@ function sweepLeftovers() {
 console.log(`\nHOUSEKEEPING SWEEP  -  ${files().length} files\n`);
 const commands = await sweepCode();
 sweepSettings(commands);
+await sweepPanel();
 await sweepData();
 sweepSafety();
 sweepLeftovers();

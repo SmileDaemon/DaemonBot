@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "panel",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["scripts/serve-panel.js"],
+      "port": 8020
+    },
+    {
+      "name": "panel-api",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "worker", "run", "dev"],
+      "port": 8787
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "name": "daemonbot-panel-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler d1 migrations apply daemonbot-panel --local && wrangler dev --port 8787",
+    "deploy": "wrangler d1 migrations apply daemonbot-panel --remote && wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  },
+  "allowScripts": {
+    "workerd@1.20261023.1": true,
+    "esbuild@0.28.2": true
+  }
+}

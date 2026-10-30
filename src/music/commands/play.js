@@ -39,7 +39,15 @@ export default {
     const result = await player.search({ query, source: 'scsearch' }, interaction.user);
     if (!result?.tracks.length || result.loadType === 'error' || result.loadType === 'empty') {
       if (!player.playing && !player.queue.tracks.length) await player.destroy();
-      return interaction.editReply(notice(`Couldn't find anything for **${query}**.`, { tone: 'error' }));
+      // A failed lookup isn't "no results": a search source can break when the site changes (SoundCloud did in 2026).
+      const isLink = /^https?:\/\//i.test(query);
+      const message =
+        result?.loadType === 'error'
+          ? isLink
+            ? `That link couldn't be loaded (${result.exception?.message ?? 'the music server reported an error'}).`
+            : "Searching isn't working right now: the music server couldn't reach SoundCloud. Paste a direct link instead (Bandcamp, Vimeo, Twitch, or an audio/radio stream)."
+          : `Couldn't find anything for **${query}**.`;
+      return interaction.editReply(notice(message, { tone: 'error' }));
     }
 
     const queuedBefore = player.queue.current ? player.queue.tracks.length + 1 : 0;

@@ -1,4 +1,5 @@
 import { EmbedBuilder } from 'discord.js';
+import { count, mirrorLog } from '../panel/analytics.js';
 import { guildConfig } from './store.js';
 
 export const COLORS = {
@@ -48,7 +49,32 @@ export function logEvent(guild, { title, color = COLORS.info, description, field
   if (thumbnail) embed.setThumbnail(thumbnail);
   if (user) embed.setAuthor({ name: `${user.tag} (${user.id})`, iconURL: user.displayAvatarURL() });
   if (fields.length) embed.addFields(fields);
+  toPanel(guild, { title, color, description, fields, user, files });
   return sendLog(guild, embed, files);
+}
+
+/** Replaces <@id>, <@&id> and <#id> with names, since the panel can't resolve mentions. */
+function plainMentions(guild, text) {
+  return text
+    ?.replace(/<@!?(\d+)>/g, (m, id) => {
+      const name = guild.members.cache.get(id)?.displayName ?? guild.client.users.cache.get(id)?.username;
+      return name ? `@${name}` : m;
+    })
+    .replace(/<@&(\d+)>/g, (m, id) => (guild.roles.cache.get(id) ? `@${guild.roles.cache.get(id).name}` : m))
+    .replace(/<#(\d+)>/g, (m, id) => (guild.channels.cache.get(id) ? `#${guild.channels.cache.get(id).name}` : m));
+}
+
+/** Copies the entry to the control panel's history and counts it for its analytics. */
+function toPanel(guild, { title, color, description, fields, user, files }) {
+  count(guild.id, 'events', title);
+  const notes = files?.length ? [{ name: 'Attachments', value: `${files.map((f) => f.name).join(', ')} (in the Discord log channel)` }] : [];
+  mirrorLog(guild.id, {
+    title,
+    color,
+    user: user ? { id: user.id, tag: user.tag, avatar: user.displayAvatarURL({ size: 64 }) } : null,
+    description: plainMentions(guild, description) ?? null,
+    fields: [...fields, ...notes].map((f) => ({ name: f.name, value: plainMentions(guild, String(f.value)), inline: Boolean(f.inline) })),
+  });
 }
 
 /** Turns a collection of messages into a .txt attachment, oldest first, for logging bulk deletions. */

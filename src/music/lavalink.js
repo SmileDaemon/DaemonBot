@@ -35,10 +35,27 @@ export function setupMusic(client) {
   client.on('raw', (packet) => manager.sendRawData(packet));
   client.once(Events.ClientReady, (c) => manager.init({ id: c.user.id, username: c.user.username }));
 
+  // While Lavalink is down every retry fails twice (an error, then a "no ping" disconnect), so say it once
+  // and stay quiet until it comes back.
+  let down = false;
+  const { host, port } = manager.options.nodes[0];
   manager.nodeManager
-    .on('connect', (node) => console.log(`Lavalink: connected to "${node.id}".`))
-    .on('disconnect', (node, reason) => console.warn(`Lavalink: disconnected from "${node.id}"`, reason?.reason ?? ''))
-    .on('error', (node, err) => console.warn(`Lavalink: can't reach "${node.id}" (${err.message}). Is the Lavalink server running?`));
+    .on('connect', (node) => {
+      down = false;
+      console.log(`Lavalink: connected to "${node.id}".`);
+    })
+    .on('disconnect', (node, reason) => {
+      if (!down) console.warn(`Lavalink: lost the connection to "${node.id}" (${reason?.reason ?? 'no reason given'}). Retrying every 15 seconds.`);
+      down = true;
+    })
+    .on('error', (node, err) => {
+      if (down) return;
+      down = true;
+      // Connection failures arrive as an AggregateError (IPv6 and IPv4 attempts) with an empty message.
+      const code = err.code ?? err.errors?.[0]?.code;
+      const why = code === 'ECONNREFUSED' ? `nothing is listening on ${host}:${port}` : err.message || code || 'unknown error';
+      console.warn(`Lavalink: can't reach "${node.id}" (${why}). Start it with "npm run lavalink"; music works once it's up. Retrying every 15 seconds.`);
+    });
 
   const textChannel = (player) => client.channels.cache.get(player.textChannelId);
 

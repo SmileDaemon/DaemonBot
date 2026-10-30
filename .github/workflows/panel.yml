@@ -1,0 +1,41 @@
+name: Publish control panel
+
+# Publishes panel/ to GitHub Pages whenever it changes on main, after the
+# housekeeping sweep passes. In the repository: Settings → Pages → Source:
+# "GitHub Actions". The bot and worker code are not published, only panel/.
+on:
+  push:
+    branches: [main]
+    paths: ['panel/**', '.github/workflows/panel.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Housekeeping sweep
+        run: npm run sweep
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: panel
+      - id: deploy
+        uses: actions/deploy-pages@v4

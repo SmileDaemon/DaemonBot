@@ -1,5 +1,4 @@
 import { ChannelType, EmbedBuilder, InteractionContextType, PermissionFlagsBits, SlashCommandBuilder } from 'discord.js';
-import { endGuildSessions } from '../../features/gameTracker.js';
 import { COLORS, logEvent } from '../../utils/logging.js';
 import { ephemeral } from '../../utils/moderation.js';
 import { defaultColor } from '../../utils/parse.js';
@@ -26,12 +25,6 @@ export default {
         .setDescription('Turn the offensive-language filter on or off in this server')
         .addBooleanOption((o) => o.setName('enabled').setDescription('On or off').setRequired(true)),
     )
-    .addSubcommand((s) =>
-      s
-        .setName('games')
-        .setDescription('Turn recording of the games members play on or off in this server')
-        .addBooleanOption((o) => o.setName('enabled').setDescription('On or off').setRequired(true)),
-    )
     .addSubcommand((s) => s.setName('view').setDescription('Show current settings'))
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setContexts(InteractionContextType.Guild),
@@ -49,7 +42,6 @@ export default {
           { name: 'Log channel', value: config.logChannelId ? `<#${config.logChannelId}>` : 'Off' },
           { name: 'Server event logging', value: onOff('ENABLE_SERVER_LOGS') },
           { name: 'Word filter', value: onOff('ENABLE_WORD_FILTER', config.wordFilter) },
-          { name: 'Game tracking', value: onOff('ENABLE_GAME_TRACKING', config.gameTracking) },
           {
             name: 'Tickets',
             value: t
@@ -73,25 +65,6 @@ export default {
       );
       return logEvent(interaction.guild, {
         title: `Word filter turned ${enabled ? 'on' : 'off'}`,
-        color: COLORS.info,
-        user: interaction.user,
-      });
-    }
-
-    if (subcommand === 'games') {
-      const enabled = interaction.options.getBoolean('enabled', true);
-      guildConfig.set(interaction.guild.id, { ...config, gameTracking: enabled });
-      if (!enabled) endGuildSessions(interaction.guild.id);
-      await interaction.reply(
-        ephemeral(
-          enabled
-            ? 'Game tracking is on. Members can see stats with `/games` and opt out with `/games privacy`.'
-            : 'Game tracking is off for this server. History recorded so far is kept.',
-          'success',
-        ),
-      );
-      return logEvent(interaction.guild, {
-        title: `Game tracking turned ${enabled ? 'on' : 'off'}`,
         color: COLORS.info,
         user: interaction.user,
       });
