@@ -6,9 +6,13 @@ import { registerActivityTracker } from './features/activityTracker.js';
 import { registerConnectionTracker } from './features/connectionTracker.js';
 import { registerGameTracker } from './features/gameTracker.js';
 import { registerLevels } from './features/levels.js';
+import { registerSecurity } from './features/security.js';
 import { registerServerLogs } from './features/serverLogs.js';
 import { registerStatChannels } from './features/statChannels.js';
 import { registerTempVoice } from './features/tempVoice.js';
+import { registerTranscripts } from './features/transcripts.js';
+import { LOCKED_MESSAGE, registerTerms, termsLocked } from './features/terms.js';
+import { registerUpdates } from './features/updates.js';
 import { registerVoiceTracker } from './features/voiceTracker.js';
 import { handleWordFilter, startWordFilter } from './features/wordFilter.js';
 import { setupMusic } from './music/lavalink.js';
@@ -31,6 +35,7 @@ const connectionsEnabled = process.env.ENABLE_CONNECTION_TRACKING === 'true';
 const levelsEnabled = process.env.ENABLE_LEVELS === 'true';
 const statChannelsEnabled = process.env.ENABLE_STAT_CHANNELS === 'true';
 const tempVoiceEnabled = process.env.ENABLE_TEMP_VOICE === 'true';
+const securityEnabled = process.env.ENABLE_SECURITY === 'true';
 const panelEnabled = Boolean(process.env.PANEL_URL && process.env.PANEL_SECRET);
 
 const intents = new Set([GatewayIntentBits.Guilds]);
@@ -64,6 +69,14 @@ if (activityEnabled || connectionsEnabled) {
 if (levelsEnabled) intents.add(GatewayIntentBits.GuildMessages).add(GatewayIntentBits.GuildVoiceStates);
 // Stat channels count members, roles and who's in voice.
 if (statChannelsEnabled) intents.add(GatewayIntentBits.GuildMembers).add(GatewayIntentBits.GuildVoiceStates);
+// Raid protection watches joins, messages (their text, for invites and scam links) and the audit log.
+if (securityEnabled) {
+  intents
+    .add(GatewayIntentBits.GuildMembers)
+    .add(GatewayIntentBits.GuildModeration)
+    .add(GatewayIntentBits.GuildMessages)
+    .add(GatewayIntentBits.MessageContent);
+}
 // Temporary voice channels watch who joins and leaves voice.
 if (tempVoiceEnabled) intents.add(GatewayIntentBits.GuildVoiceStates);
 // The control panel counts messages per channel; that doesn't need their content.
@@ -89,6 +102,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.isAutocomplete()) {
       await client.commands.get(interaction.commandName)?.autocomplete?.(interaction);
     } else if (interaction.isChatInputCommand() || interaction.isMessageContextMenuCommand()) {
+      // A server that hasn't accepted the terms can't use the bot yet; /help still works.
+      if (interaction.inGuild() && interaction.commandName !== 'help' && termsLocked(interaction.guild)) {
+        return interaction.reply(ephemeral(LOCKED_MESSAGE));
+      }
       await client.commands.get(interaction.commandName)?.execute(interaction);
     } else if (interaction.isModalSubmit() || interaction.isButton() || interaction.isAnySelectMenu()) {
       // Custom IDs are prefixed with the owning command's name, e.g. "embed:create:123" or "ticket:claim:456".
@@ -127,6 +144,10 @@ if (connectionsEnabled) registerConnectionTracker(client);
 if (levelsEnabled) registerLevels(client);
 if (statChannelsEnabled) registerStatChannels(client);
 if (tempVoiceEnabled) registerTempVoice(client);
+if (securityEnabled) registerSecurity(client);
+registerUpdates(client);
+registerTerms(client);
+registerTranscripts(client);
 
 process.on('unhandledRejection', (err) => console.error('Unhandled rejection:', err));
 

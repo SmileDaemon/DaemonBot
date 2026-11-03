@@ -13,6 +13,7 @@ import { COLORS, logEvent } from '../utils/logging.js';
 import { defaultColor } from '../utils/parse.js';
 import { notice } from '../utils/replies.js';
 import { guildConfig, tickets as ticketStore } from '../utils/store.js';
+import { KEEP_DAYS, saveTranscript } from './transcripts.js';
 
 const STATUS = {
   pending: { label: '🟡 Pending', color: 0xf1c40f },
@@ -445,7 +446,7 @@ export async function closeTicket(interaction, channelId) {
       const parent = await archiveCategoryFor(guild, settings);
       await channel.edit({ name: channelName(ticket), parent, lockPermissions: false, reason: `Ticket closed by ${user.tag}` });
       await refreshMessages(guild, ticket, settings, channel);
-      await channel.send(notice(`🔒 Ticket closed by ${user}. This channel is now read-only for <@${ticket.openerId}>, and it stays here so they can look back at it any time.`));
+      await channel.send(notice(`🔒 Ticket closed by ${user}. This channel is now read-only for <@${ticket.openerId}>, and it stays here so they can look back at it any time. A transcript is kept until the server's transcripts are next deleted (every ${KEEP_DAYS} days); export it with \`/ticket export number:${ticket.number}\`.`));
     }
   } catch (err) {
     console.error(`Couldn't close ticket ${channelId} in ${guild.id}:`, err.message);
@@ -453,6 +454,10 @@ export async function closeTicket(interaction, channelId) {
     return { error: "I couldn't close this ticket. An admin should check that I have Manage Channels and Manage Roles." };
   }
 
+  const transcript = await saveTranscript(guild, ticket, channel).catch((err) => {
+    console.error(`Couldn't save the transcript of ticket ${ticket.number} in ${guild.id}:`, err.message);
+    return null;
+  });
   await logEvent(guild, {
     title: 'Ticket closed',
     color: COLORS.ticket,
@@ -460,6 +465,7 @@ export async function closeTicket(interaction, channelId) {
     fields: [
       { name: 'Ticket', value: `${number(ticket)} · ${ticket.subject}`, inline: true },
       { name: 'Channel', value: `${channel}`, inline: true },
+      { name: 'Transcript', value: transcript ? `${transcript.messages.length} messages, kept until ${time(new Date(transcript.expiresAt), 'D')}` : "Couldn't be saved", inline: true },
     ],
   });
   return { channel };

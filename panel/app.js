@@ -13,6 +13,7 @@ const TABS = [
   ['serverstats', 'Server Stats'],
   ['settings', 'Settings'],
   ['setup', 'Setup'],
+  ['security', 'Security'],
   ['moderation', 'Moderation'],
   ['logs', 'Logs'],
   // ['music', 'Music'], // shelved with the bot's music commands; the page is still in views.js
@@ -96,8 +97,11 @@ async function render() {
   if (parts[0] === 'g' && me.guilds.some((g) => g.id === parts[1])) {
     const guild = me.guilds.find((g) => g.id === parts[1]);
     // The Activity and Connections tabs only show once the bot's owner lets this server's admins see them.
-    const tabs = TABS.filter(([t]) => !['activity', 'connections'].includes(t) || guild.statsAccess !== false);
-    const tab = tabs.some(([t]) => t === parts[2]) ? parts[2] : 'overview';
+    // Until the server accepts the Terms of Service and Privacy Policy, its only page is the one to accept them.
+    const tabs = guild.termsAccepted === false
+      ? [['terms', '🔒 Terms']]
+      : TABS.filter(([t]) => !['activity', 'connections'].includes(t) || guild.statsAccess !== false);
+    const tab = tabs.some(([t]) => t === parts[2]) ? parts[2] : tabs[0][0];
     ctx = { ...ctx, guildId: guild.id };
     view = views[tab];
     key = tab;
@@ -128,6 +132,9 @@ async function render() {
   }
 
   document.querySelectorAll('.sidebar a').forEach((a) => a.classList.toggle('active', a.dataset.guild === (ctx.guildId ?? ctx.page ?? 'bot')));
+  // The tab bar scrolls sideways once there are more tabs than fit; keep the open one in view.
+  const activeTab = main.querySelector('.tabs a.active');
+  activeTab?.parentElement.scrollTo({ left: activeTab.offsetLeft - activeTab.parentElement.offsetLeft - 24 });
   const target = document.getElementById('view');
   const run = async (first) => {
     try {

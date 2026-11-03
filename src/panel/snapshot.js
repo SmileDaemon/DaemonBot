@@ -1,10 +1,14 @@
 import { ChannelType } from 'discord.js';
 import { activityIn } from '../features/activityTracker.js';
+import { backupStats } from '../features/backups.js';
 import { connectionsIn } from '../features/connectionTracker.js';
 import { gamesOf, liveMs } from '../features/gameTracker.js';
 import { fullSetupDone } from '../features/fullSetup.js';
 import { DEFAULT_LEVEL_MESSAGE, levelSettings, XP_DEFAULTS } from '../features/levels.js';
+import { securityStatus } from '../features/security.js';
 import { statSettings } from '../features/statChannels.js';
+import { termsStatus } from '../features/terms.js';
+import { transcriptSummary } from '../features/transcripts.js';
 import { tempVoiceStatus } from '../features/tempVoice.js';
 import { allTickets } from '../features/tickets.js';
 import { liveVoice, voiceOf } from '../features/voiceTracker.js';
@@ -119,6 +123,7 @@ export function guildSnapshot(guild) {
 
   const ticketList = allTickets(guild.id).sort((a, b) => b.createdAt - a.createdAt);
   const ticketChannels = new Set(ticketList.map((t) => t.channelId));
+  const kept = transcriptSummary(guild.id);
 
   // Ticket channels aren't places to send logs or queues, so they stay out of the panel's channel lists.
   const channels = guild.channels.cache
@@ -199,11 +204,13 @@ export function guildSnapshot(guild) {
       levels: env('ENABLE_LEVELS'),
       statChannels: env('ENABLE_STAT_CHANNELS'),
       tempVoice: env('ENABLE_TEMP_VOICE'),
+      security: env('ENABLE_SECURITY'),
       music: env('ENABLE_MUSIC'),
     },
     settings: {
       logChannelId: config.logChannelId ?? null,
       wordFilter: config.wordFilter !== false,
+      updateNotes: config.updateNotes !== false,
       gameTracking: config.gameTracking !== false,
       voiceTracking: config.voiceTracking !== false,
       activityTracking: config.activityTracking !== false,
@@ -214,6 +221,9 @@ export function guildSnapshot(guild) {
       tickets: config.tickets ?? null,
       statChannels: statSettings(guild),
       tempVoice: tempVoiceStatus(guild),
+      security: securityStatus(guild),
+      terms: termsStatus(guild),
+      backups: backupStats(guild),
     },
     channels,
     roles,
@@ -230,6 +240,7 @@ export function guildSnapshot(guild) {
         claimedAt: t.claimedAt ?? null,
         closedAt: t.closedAt ?? null,
         channelId: t.channelId,
+        transcript: kept[t.number] ?? null,
       })),
     },
     warnings: warned,

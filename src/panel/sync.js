@@ -93,6 +93,7 @@ export function startPanel(client) {
           levels: process.env.ENABLE_LEVELS === 'true',
           statChannels: process.env.ENABLE_STAT_CHANNELS === 'true',
           tempVoice: process.env.ENABLE_TEMP_VOICE === 'true',
+          security: process.env.ENABLE_SECURITY === 'true',
           music: process.env.ENABLE_MUSIC === 'true',
           messageQuotes: process.env.ENABLE_MESSAGE_QUOTES === 'true',
         },

@@ -70,6 +70,11 @@ h3 { font-size: .9rem; color: var(--muted); }
 .legal h2 { margin-top: 2rem; }
 .legal h3 { margin-top: 1.25rem; }
 .legal p, .legal ul, .legal .table-wrap { margin: 0 0 .9rem; }
+.legal-box { max-width: none; min-height: 0; max-height: 60vh; overflow-y: auto; margin: 0 0 10px; padding: 12px 16px; border: 1px solid var(--border); background: var(--bg); }
+.terms-steps { display: flex; gap: 16px; list-style: none; padding: 0; margin: 0 0 12px; flex-wrap: wrap; }
+.terms-steps li { color: var(--muted); }
+.terms-steps li.active { color: var(--text); font-weight: 700; }
+.terms-steps li.done { color: var(--accent); }
 .legal ul { padding-left: 1.4rem; }
 .legal li { margin-bottom: .3rem; }
 .legal strong { color: var(--bright); }
@@ -124,13 +129,15 @@ button.danger:hover { background: var(--bad); color: var(--bg); }
 button.danger:disabled { opacity: .45; cursor: not-allowed; background: transparent; color: var(--bad); }
 /* Long option text mustn't widen the page; small boxes (rows set) skip the word list's tall minimum. */
 label.field select { max-width: 100%; min-width: 0; }
+label.field input, label.field textarea { width: 100%; min-width: 0; }
+.kpi .value.text { font-size: 1.05rem; line-height: 1.35; }
 textarea[rows] { min-height: 0; }
 .danger-zone { border-color: var(--bad); box-shadow: 0 0 10px rgb(255 79 79 / 15%); }
 .danger-zone h2, .danger-zone h2::before { color: var(--bad); text-shadow: none; }
 .danger-zone ul { margin: 0 0 14px; padding-left: 1.3rem; }
 button:disabled, button:disabled:hover { opacity: .45; cursor: progress; background: transparent; color: var(--text); }
 button.small { padding: 1px 7px; font-size: .8rem; }
-select, input[type=text], input[type=search], textarea {
+select, input[type=text], input[type=search], input[type=number], textarea {
   font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 0; padding: 6px 10px; max-width: 100%;
   caret-color: var(--bright); text-shadow: inherit;
 }
@@ -142,6 +149,8 @@ label.field { display: grid; gap: 4px; margin-bottom: 14px; }
 label.field > span { font-weight: 700; font-size: .85rem; }
 .switch { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
 .switch input { width: 16px; height: 16px; accent-color: var(--accent); }
+.switch.top { align-items: flex-start; }
+.switch.top input { margin-top: 3px; }
 .stat-row { display: grid; gap: 6px; padding: 10px 0; border-top: 1px solid var(--border); }
 .stat-row:last-child { margin-bottom: 14px; border-bottom: 1px solid var(--border); }
 input[type=range] { accent-color: var(--accent); width: 180px; }

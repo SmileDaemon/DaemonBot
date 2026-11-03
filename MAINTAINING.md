@@ -66,6 +66,8 @@ Register commands (`npm run deploy`) from your PC as before: that talks to Disco
 ### Data
 Warnings, tickets, game, voice, activity and connection stats, and per-server settings are saved as JSON in `data/`. Word list edits made in the control panel are saved as `data/filter-words.txt`, which takes over from the repo's `filter-words.txt` once it exists, so a redeploy can't undo them; delete it to go back to the repo's list. Back that folder up if you move hosts.
 
+**Update notes.** When you ship something servers should know about, add an entry to `UPDATES` in [src/features/updates.js](src/features/updates.js) with the day it ships (Eastern time). When the bot restarts with it, each server gets a note in its log channel; notes from the same day share one message, which is edited as more arrive.
+
 ### Adding commands
 Drop a file in any folder under `src/commands/` exporting `default { data, execute }` (see `src/commands/general/ping.js`), then `npm run deploy`.
 

@@ -4,18 +4,20 @@ export const esc = (value) =>
 
 export const num = (n) => Number(n ?? 0).toLocaleString();
 
+/** "5 minutes ago", or for a time still to come, "in 5 minutes". */
 export function ago(ms) {
   if (!ms) return 'never';
-  const s = Math.round((Date.now() - ms) / 1000);
-  if (s < 45) return 'just now';
-  const units = [['day', 86400], ['hour', 3600], ['minute', 60]];
-  for (const [name, size] of units) {
+  const diff = Math.round((Date.now() - ms) / 1000);
+  const s = Math.abs(diff);
+  if (s < 45) return diff < 0 ? 'any moment now' : 'just now';
+  const say = (text) => (diff < 0 ? `in ${text}` : `${text} ago`);
+  for (const [name, size] of [['day', 86400], ['hour', 3600], ['minute', 60]]) {
     if (s >= size) {
       const n = Math.round(s / size);
-      return `${n} ${name}${n === 1 ? '' : 's'} ago`;
+      return say(`${n} ${name}${n === 1 ? '' : 's'}`);
     }
   }
-  return `${s} seconds ago`;
+  return say(`${s} seconds`);
 }
 
 export const dateTime = (ms) => new Date(ms).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });

@@ -72,3 +72,15 @@ export const levels = createStore('levels');
 
 /** Warnings, keyed by guild ID: { [userId]: [{ reason, moderatorId, at }] } */
 export const warnings = createStore('warnings');
+
+/** Raid protection's running state, keyed by guild ID: { lockdown, raid, incidents } */
+export const securityState = createStore('security');
+
+/** Backups of each server's channels and roles, newest first, keyed by guild ID: [{ at, reason, everyone, roles, channels }] */
+export const backups = createStore('backups');
+
+/** Which bot update notes each server has had, and today's message: { seen, day, channelId, messageId, posted } */
+export const updateNotes = createStore('updatenotes');
+
+/** Closed tickets' conversations, keyed by guild ID then ticket number; each is deleted 30 days after closing. */
+export const transcripts = createStore('transcripts');

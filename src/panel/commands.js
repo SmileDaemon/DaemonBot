@@ -1,12 +1,16 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { PermissionFlagsBits } from 'discord.js';
+import { latestBackup, restoreBackup, takeBackup } from '../features/backups.js';
 import { fullReset, runFullSetup, setUpTickets } from '../features/fullSetup.js';
 import { endGuildSessions } from '../features/gameTracker.js';
 import { saveLevelSettings } from '../features/levels.js';
 import { optIn, optOut } from '../features/optOut.js';
+import { botRoleIsTop, endLockdown, MODULES, ROLE_HINT, saveSecuritySettings, startLockdown } from '../features/security.js';
 import { MAX_NAME, MAX_STATS, saveStatChannels, STAT_TYPES, statTypeOffered } from '../features/statChannels.js';
 import { BOT_NEEDS as TEMP_VOICE_NEEDS, removeTempVoice, setupTempVoice } from '../features/tempVoice.js';
+import { acceptTerms, declineTerms, LOCKED_MESSAGE, termsLocked } from '../features/terms.js';
+import { transcriptFile, transcriptOf } from '../features/transcripts.js';
 import { changeStaffRole, parseTicketTypes } from '../features/tickets.js';
 import { endGuildVoice } from '../features/voiceTracker.js';
 import { parseWordList, SAVED_WORDS } from '../features/wordFilter.js';
@@ -135,6 +139,7 @@ const HANDLERS = {
     }
     for (const [key, label] of [
       ['wordFilter', 'Word filter'],
+      ['updateNotes', 'Bot update notes'],
       ['gameTracking', 'Game tracking'],
       ['voiceTracking', 'Voice tracking'],
       ['activityTracking', 'Activity tracking'],
@@ -249,11 +254,57 @@ const HANDLERS = {
       tempVoice: Boolean(payload.tempVoice),
       stats: payload.stats ? statsPlan(guild, payload.stats) : false,
       levels: payload.levels ? levelPlan(guild, payload.levels) : undefined,
+      security: Boolean(payload.security),
     };
     const results = await runFullSetup(guild, await panelAuthor(guild, user), plan, 'panel');
     const gaps = results.filter((r) => !r.ok).length;
     return `Full setup ${gaps ? `done, with ${gaps} gap${gaps === 1 ? '' : 's'}` : 'done'}. ` +
       results.map((r) => `${r.ok ? '✓' : '⚠'} ${r.name}: ${readable(guild, r.text)}`).join(' · ');
+  },
+
+  // Security tab: which protections are on, their limits, and who they leave alone.
+  async 'security.update'(guild, payload, user) {
+    if (process.env.ENABLE_SECURITY !== 'true') refuse("Raid protection is turned off in the bot's .env.");
+    const before = { ...(guildConfig.get(guild.id, {}).security?.modules ?? {}) };
+    const after = await saveSecuritySettings(guild, payload);
+    const turned = Object.keys(MODULES).filter((k) => Boolean(before[k]) !== after.modules[k]);
+    await logPanelChange(guild, user, 'Raid protection changed', [
+      ...turned.map((k) => ({ name: MODULES[k].label, value: after.modules[k] ? 'On' : 'Off', inline: true })),
+      ...(payload.limits || payload.trusted ? [{ name: 'Limits and trusted list', value: 'Saved', inline: true }] : []),
+    ]);
+    const anyOn = Object.values(after.modules).some(Boolean);
+    return `Raid protection saved.${anyOn && !botRoleIsTop(guild) ? ` ${ROLE_HINT}` : ''}`;
+  },
+  async 'security.lockdown'(guild, { on }, user) {
+    const by = (await panelAuthor(guild, user)).tag;
+    const changed = on ? await startLockdown(guild, { by }) : await endLockdown(guild, by);
+    if (!changed) refuse(on ? 'The server is already locked down.' : "The server isn't locked down.");
+    return on ? "Locked down: @everyone can't post, verification is High and invites are paused." : 'Lockdown over: everything is back as it was.';
+  },
+  async 'security.backup'(guild, _payload, user) {
+    const b = takeBackup(guild, 'manual');
+    await logPanelChange(guild, user, 'Backup taken');
+    return `Backed up ${b.roles.length} roles and ${b.channels.length} channels.`;
+  },
+  // Makes again what the latest backup has and the server doesn't. The panel asks for the server's name first.
+  async 'security.restore'(guild, { confirm }, user) {
+    if (confirm !== guild.name) refuse("Type the server's name exactly to confirm a restore.");
+    if (!latestBackup(guild.id)) refuse('There are no backups yet.');
+    const r = await restoreBackup(guild);
+    await logPanelChange(guild, user, 'Restored from backup', [{ name: 'Made again', value: `${r.roles} roles, ${r.channels} channels`, inline: true }]);
+    return `Made again: ${r.roles} role(s) and ${r.channels} channel(s).${r.failed ? ` ${r.failed} couldn't be made; check my role is at the top.` : ''}`;
+  },
+
+  // The terms page: both documents read to the end and agreed to. Unlocks the server.
+  async 'terms.accept'(guild, { tos, privacy }, user) {
+    if (tos !== true || privacy !== true) refuse('Both the Terms of Service and the Privacy Policy need to be accepted.');
+    const changed = await acceptTerms(guild, await panelAuthor(guild, user), 'panel');
+    return changed ? 'Thanks! The bot is unlocked for this server, and everything can be set up now.' : 'This server had already accepted them.';
+  },
+  async 'terms.decline'(guild, { which }, user) {
+    if (!termsLocked(guild)) refuse('This server already accepted the terms. To remove the bot, kick it in Discord.');
+    await declineTerms(guild, await panelAuthor(guild, user), which === 'privacy' ? 'privacy' : 'tos');
+    return 'Declined. DaemonBot is leaving the server.';
   },
 
   // Danger Zone: undoes a full setup and unlocks it. The panel asks for the server's name; checked again here.
@@ -267,6 +318,16 @@ const HANDLERS = {
     const { left } = await removeTempVoice(guild);
     await logPanelChange(guild, user, 'Temporary voice channels removed');
     return `Removed.${left ? ` ${left} channel${left === 1 ? ' is' : 's are'} still in use and will disappear when emptied.` : ''}`;
+  },
+
+  // Sends a ticket's transcript to whoever asked, by direct message.
+  async 'tickets.transcript'(guild, { number }, user) {
+    const t = transcriptOf(guild.id, Number(number));
+    if (!t) refuse("That transcript isn't kept anymore.");
+    const author = await panelAuthor(guild, user);
+    const sent = await author.send({ content: `Transcript of ticket #${t.number} in ${guild.name}.`, files: [transcriptFile(guild, t)] }).then(() => true, () => false);
+    if (!sent) refuse("I couldn't message you. Allow direct messages from this server's members, or use /ticket export in Discord.");
+    return 'Sent to you in a direct message on Discord.';
   },
 
   async 'warnings.clear'(guild, { userId }, user) {
@@ -373,6 +434,7 @@ export async function runPanelCommand(client, command) {
       guild = client.guilds.cache.get(command.guildId);
       if (!guild) refuse("I'm not in that server anymore.");
     }
+    if (guild && termsLocked(guild) && !command.type.startsWith('terms.')) refuse(LOCKED_MESSAGE);
     const message = await handler(guild, command.payload ?? {}, command.user, client);
     return { id: command.id, ok: true, message };
   } catch (err) {

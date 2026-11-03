@@ -11,6 +11,8 @@ import {
   TextInputBuilder,
   TextInputStyle,
 } from 'discord.js';
+import { botRoleIsTop, ROLE_HINT } from '../../features/security.js';
+import { handleWelcome } from '../../features/terms.js';
 import { DEFAULT_STATS, MAX_STATS, statSettings } from '../../features/statChannels.js';
 import { handleTempVoice, removeTempVoice, tempVoiceSettings } from '../../features/tempVoice.js';
 import { parseTicketTypes, ticketSettings, ticketTypes } from '../../features/tickets.js';
@@ -164,6 +166,7 @@ async function full(interaction) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const results = await runFullSetup(guild, user, defaultPlan(guild), 'discord');
   const lines = results.map((r) => `${r.ok ? '✅' : '⚠️'} **${r.name}:** ${r.text}`);
+  if (!botRoleIsTop(guild)) lines.push('', `⚠️ **One more step:** ${ROLE_HINT}`);
   lines.push('', '🔒 Full setup is now locked for this server. Change each part with its own /setup command or in the control panel, or use Full Reset in the control panel\'s Danger Zone to run it again.');
   const allGood = results.every((r) => r.ok);
   await interaction.editReply(notice(lines.join('\n'), { tone: allGood ? 'success' : 'warn', title: allGood ? 'Everything is set up' : 'Set up, with some gaps' }));
@@ -228,6 +231,7 @@ export default {
       await report(interaction, err, part);
     }
   },
-  handleButton: handleTempVoice,
-  handleSelect: handleTempVoice,
+  // The first-time welcome ("setup:welcome:<log|make>"); everything else is a temporary voice channel's controls.
+  handleButton: (interaction) => (interaction.customId.startsWith('setup:welcome:') ? handleWelcome(interaction) : handleTempVoice(interaction)),
+  handleSelect: (interaction) => (interaction.customId.startsWith('setup:welcome:') ? handleWelcome(interaction) : handleTempVoice(interaction)),
 };

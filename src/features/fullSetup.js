@@ -3,6 +3,7 @@ import { COLORS, logEvent } from '../utils/logging.js';
 import { refuse, Refused } from '../utils/refused.js';
 import { guildConfig } from '../utils/store.js';
 import { saveLevelSettings, XP_DEFAULTS } from './levels.js';
+import { enableDefaultSecurity, resetSecurity, ROLE_HINT } from './security.js';
 import { addStats, saveStatChannels, statSettings } from './statChannels.js';
 import { BOT_NEEDS as TEMP_VOICE_NEEDS, removeTempVoice, setupTempVoice, tempVoiceSettings } from './tempVoice.js';
 import { allTickets, setupTicketSection, ticketSettings, ticketTypes } from './tickets.js';
@@ -81,7 +82,7 @@ export async function setLogChannel(guild, user, channel) {
 }
 
 /** The log channel there is, or a new staff-only one. */
-async function defaultLogChannel(guild, user) {
+export async function defaultLogChannel(guild, user) {
   const current = guild.channels.cache.get(guildConfig.get(guild.id, {}).logChannelId);
   if (current) return { channel: current, made: false };
   if (!guild.members.me.permissions.has([P.ManageChannels, P.ManageRoles, ...BOT_NEEDS_IN_LOG_CHANNEL])) refuse('For a log channel I need Manage Channels and Manage Roles.');
@@ -115,7 +116,7 @@ function checkFullSetupUnlocked(guild) {
 }
 
 /** /setup full's plan: everything at its defaults. Parts left out of a plan are left as they are. */
-export const defaultPlan = (guild) => ({ log: { mode: 'auto' }, tickets: ticketDefaults(guild), tempVoice: true, stats: { types: ['members', 'bots'], roleIds: [] } });
+export const defaultPlan = (guild) => ({ log: { mode: 'auto' }, tickets: ticketDefaults(guild), tempVoice: true, stats: { types: ['members', 'bots'], roleIds: [] }, security: true });
 
 /**
  * Runs a full setup: every part in `plan`, one after another, then locks it. A part that can't be set up is
@@ -124,6 +125,7 @@ export const defaultPlan = (guild) => ({ log: { mode: 'auto' }, tickets: ticketD
  *   tickets:   { staffRoleId, queueChannelId, pingStaff, types } or false to skip
  *   tempVoice: true to set up, false to skip
  *   stats:     { types, roleIds } or false to skip
+ *   security:  true to turn on the join alarm, mention guard, link filter, anti-nuke and backups
  *   levels:    { enabled, announce, message, xp } (panel only)
  *   wordFilter: true or false (panel only)
  */
@@ -163,6 +165,14 @@ export async function runFullSetup(guild, user, plan, via) {
     parts.push(['Server stats', async () => {
       const { skipped } = await setUpStats(guild, user, plan.stats);
       return `${statSettings(guild).stats.length} stat channel(s)${skipped ? `; ${skipped} didn't fit` : ''}`;
+    }]);
+  }
+  if (plan.security) {
+    parts.push(['Raid protection', async () => {
+      if (off('ENABLE_SECURITY')) refuse("Raid protection is turned off in the bot's .env.");
+      const { roleTop, botsTrusted } = await enableDefaultSecurity(guild);
+      const bots = botsTrusted ? `; your ${botsTrusted} other bot${botsTrusted === 1 ? ' is' : 's are'} trusted, so anti-nuke leaves ${botsTrusted === 1 ? 'it' : 'them'} alone` : '';
+      return `join alarm, mention guard, link filter, anti-nuke and backups on${bots}; more in the control panel's Security tab${roleTop ? '' : `. ⚠️ ${ROLE_HINT}`}`;
     }]);
   }
   if (plan.levels) {
@@ -223,6 +233,8 @@ export async function fullReset(guild, user) {
       note('Tickets', '"Create A Ticket" channel removed and ticket settings cleared; closed tickets stay in their archive');
     }
   }
+  await resetSecurity(guild);
+  note('Raid protection', 'every protection off and any lockdown lifted; backups are kept');
   saveLevelSettings(guild.id, { enabled: true, announce: 'here', message: null, xp: { ...XP_DEFAULTS }, rewards: {} });
   note('Levels', 'settings back to their defaults; everyone keeps their XP');
 

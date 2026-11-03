@@ -27,6 +27,7 @@ const MANAGE_GUILD = 0x20n;
 const COMMANDS = {
   'settings.update': 'guild',
   'tickets.update': 'guild',
+  'tickets.transcript': 'guild',
   'statchannels.set': 'guild',
   'tempvoice.setup': 'guild',
   'tempvoice.remove': 'guild',
@@ -34,6 +35,12 @@ const COMMANDS = {
   'levels.update': 'guild',
   'setup.full': 'guild',
   'setup.reset': 'guild',
+  'security.update': 'guild',
+  'security.lockdown': 'guild',
+  'security.backup': 'guild',
+  'security.restore': 'guild',
+  'terms.accept': 'guild',
+  'terms.decline': 'guild',
   'warnings.clear': 'guild',
   'warnings.remove': 'guild',
   'music.pause': 'guild',
@@ -116,6 +123,9 @@ async function route(request, env, url) {
   if (path === '/') return json({ ok: true, service: 'DaemonBot control panel relay' });
   if (path === '/auth/login' && method === 'GET') return login(env, url);
   if (path === '/invite' && method === 'GET') return invite(env);
+  // The bot's "Read and accept" button: the panel's terms page for that server.
+  const termsLink = path.match(/^\/terms\/(\d{17,20})$/);
+  if (termsLink && method === 'GET') return Response.redirect(`${env.SITE_ORIGIN}${env.SITE_PATH ?? '/'}#/g/${termsLink[1]}/terms`, 302);
   if (path === '/auth/callback' && method === 'GET') return callback(env, url);
   if (path === '/auth/dev' && method === 'GET') return devLogin(env, url);
   if (path === '/auth/logout' && method === 'POST') return logout(request, env);
@@ -309,11 +319,14 @@ async function botStatus(env) {
 }
 
 async function me(env, session) {
-  const { results } = await env.DB.prepare('SELECT id, name, icon, member_count, updated_at FROM guilds ORDER BY name').all();
+  const { results } = await env.DB.prepare(
+    "SELECT id, name, icon, member_count, updated_at, json_extract(snapshot, '$.settings.terms.accepted') AS terms FROM guilds ORDER BY name",
+  ).all();
   const allowed = await statsAccessFor(env);
   const guilds = results
     .filter((g) => session.isOwner || session.guildIds.includes(g.id))
-    .map((g) => ({ id: g.id, name: g.name, icon: g.icon, memberCount: g.member_count, statsAccess: allowed(g.id) }));
+    // Only a server the bot reports as not having accepted is locked; older reports say nothing about it.
+    .map((g) => ({ id: g.id, name: g.name, icon: g.icon, memberCount: g.member_count, statsAccess: allowed(g.id), termsAccepted: g.terms !== 0 }));
   return json({
     user: { id: session.userId, username: session.username, avatar: session.avatar, isOwner: session.isOwner },
     guilds,

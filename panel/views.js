@@ -90,6 +90,84 @@ const seriesFor = (byDay, metric, days, fillGaps = false) => {
 const ranked = (obj = {}) => Object.entries(obj).sort((a, b) => b[1] - a[1]);
 
 // ---------------------------------------------------------------------------
+//   Terms: a server has to accept both documents before it can be set up
+// ---------------------------------------------------------------------------
+
+const DOCUMENTS = [
+  { key: 'tos', page: 'terms', title: 'Terms of Service' },
+  { key: 'privacy', page: 'privacy', title: 'Privacy Policy' },
+];
+
+/** The body of one of the site's generated legal pages (terms.html, privacy.html). */
+async function legalText(page) {
+  const res = await fetch(`${page}.html`, { cache: 'no-cache' });
+  if (!res.ok) throw new Error(`Couldn't load the ${page} page. Try reloading.`);
+  const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+  const body = doc.querySelector('main') ?? doc.body;
+  body.querySelectorAll('script').forEach((s) => s.remove());
+  return body.innerHTML;
+}
+
+export async function terms(main, ctx) {
+  const { guildId } = ctx;
+  main.innerHTML = loading;
+  const guild = await api(`/api/guilds/${guildId}`);
+  if (guild.settings.terms?.accepted !== false) {
+    main.innerHTML = `<div class="card"><h2>Terms accepted</h2><p>This server has accepted the Terms of Service and Privacy Policy${guild.settings.terms?.by ? ` (${esc(guild.settings.terms.by.username)}, ${esc(dateTime(guild.settings.terms.acceptedAt))})` : ''}.</p><a class="button" href="#/g/${esc(guildId)}/overview">Go to the server</a></div>`;
+    return;
+  }
+  const texts = await Promise.all(DOCUMENTS.map((d) => legalText(d.page)));
+  let step = 0;
+
+  const draw = () => {
+    const doc = DOCUMENTS[step];
+    main.innerHTML = `${offlineBanner(guild.bot)}
+      <div class="card terms-card">
+        <h2>🔒 Before ${esc(guild.name)} can use DaemonBot</h2>
+        <p>Read the ${step === 0 ? 'Terms of Service, then the Privacy Policy' : 'Privacy Policy'} and agree to ${step === 0 ? 'each' : 'it'}. Declining either one makes the bot leave the server; you can add it again any time.</p>
+        <ol class="terms-steps">${DOCUMENTS.map((d, i) => `<li class="${i < step ? 'done' : i === step ? 'active' : ''}">${i < step ? '✓ ' : ''}${d.title}</li>`).join('')}</ol>
+        <div class="legal-box legal" id="legalbox" tabindex="0" aria-label="${doc.title}">${texts[step]}</div>
+        <p class="muted small" id="scrollhint">Scroll to the end of the ${doc.title} to continue.</p>
+        <div class="row">
+          <button class="primary" id="agree" disabled>Agree to the ${doc.title}</button>
+          <button class="danger" id="decline" disabled>Decline</button>
+        </div>
+      </div>`;
+    const box = main.querySelector('#legalbox');
+    const agree = main.querySelector('#agree');
+    const decline = main.querySelector('#decline');
+    const unlockAtEnd = () => {
+      if (box.scrollTop + box.clientHeight < box.scrollHeight - 8) return;
+      agree.disabled = false;
+      decline.disabled = false;
+      main.querySelector('#scrollhint').textContent = `You've reached the end of the ${doc.title}.`;
+    };
+    box.addEventListener('scroll', unlockAtEnd);
+    unlockAtEnd(); // a short document that fits needs no scrolling
+
+    agree.addEventListener('click', () => {
+      if (step < DOCUMENTS.length - 1) {
+        step += 1;
+        draw();
+        return;
+      }
+      act(agree, guildId, 'terms.accept', { tos: true, privacy: true }, () => {
+        location.hash = `#/g/${guildId}/overview`;
+        location.reload();
+      });
+    });
+    decline.addEventListener('click', () => {
+      if (!confirm(`Decline the ${doc.title}? DaemonBot will leave ${guild.name}.`)) return;
+      act(decline, guildId, 'terms.decline', { which: doc.key }, () => {
+        location.hash = '#/bot';
+        location.reload();
+      });
+    });
+  };
+  draw();
+}
+
+// ---------------------------------------------------------------------------
 //   Overview
 // ---------------------------------------------------------------------------
 
@@ -531,6 +609,7 @@ export async function settings(main, ctx) {
           <select name="logChannelId">${channelOptions(guild, s.logChannelId)}</select>
           <span class="muted small">Moderation, bot actions and server events are posted here. The panel's log history works either way.</span></label>
         <label class="switch"><input type="checkbox" name="wordFilter"${s.wordFilter ? ' checked' : ''}> Word filter${offNote('wordFilter')}</label>
+        <label class="switch"><input type="checkbox" name="updateNotes"${s.updateNotes !== false ? ' checked' : ''}> Bot update notes <span class="muted small">(new features, posted in the log channel)</span></label>
         <label class="switch"><input type="checkbox" name="levels"${s.levels !== false ? ' checked' : ''}> Levels <span class="muted small">(XP and levels from activity)</span>${offNote('levels')}</label>
         <h3>Statistics</h3>
         ${tracker('gameTracking', 'Game tracking')}${tracker('voiceTracking', 'Voice tracking')}${tracker('activityTracking', 'Activity tracking')}${tracker('connectionTracking', 'Connection tracking')}
@@ -561,7 +640,7 @@ export async function settings(main, ctx) {
     const f = e.target.elements;
     const payload = {};
     if ((f.logChannelId.value || null) !== s.logChannelId) payload.logChannelId = f.logChannelId.value || null;
-    for (const key of ['wordFilter', 'levels', 'gameTracking', 'voiceTracking', 'activityTracking', 'connectionTracking']) {
+    for (const key of ['wordFilter', 'updateNotes', 'levels', 'gameTracking', 'voiceTracking', 'activityTracking', 'connectionTracking']) {
       if (!f[key].disabled && f[key].checked !== (s[key] !== false)) payload[key] = f[key].checked;
     }
     if (!Object.keys(payload).length) return toast('Nothing changed.');
@@ -598,6 +677,7 @@ function dangerZone(guild) {
       <li>Deletes the "Create A Ticket" channel and clears the ticket settings${open ? `. <b>Skipped while tickets are open (${num(open)} now)</b>` : ''}. Ticket channels and the archive are kept.</li>
       <li>Turns the log channel off. The channel and its messages are kept.</li>
       <li>Puts the level settings, reward roles and word filter back to their defaults. Everyone keeps their XP.</li>
+      <li>Turns every raid protection off and ends any lockdown. Backups are kept.</li>
       <li>Unlocks full setup.</li>
     </ul>
     <label class="field"><span>Type <b>${esc(guild.name)}</b> to confirm</span><input type="text" id="resetconfirm" autocomplete="off" spellcheck="false"></label>
@@ -648,6 +728,10 @@ function fullSetupForm(guild) {
         <label class="switch"><input type="checkbox" name="tempVoice"${f.tempVoice ? ' checked' : ''}${off(f.tempVoice)}> Set up "Join To Create" voice channels${offNote(f.tempVoice)}</label>
         <p class="muted small">Joining it gives a member their own voice channel, which disappears when everyone leaves.</p>
       </div>
+      <div class="card"><h2>Raid protection</h2>
+        <label class="switch"><input type="checkbox" name="security"${f.security ? ' checked' : ''}${off(f.security)}> Turn on the basics${offNote(f.security)}</label>
+        <p class="muted small">Join alarm, mass mention guard, link and invite filter, anti-nuke and daily backups. The rest can be switched on in the Security tab.</p>
+      </div>
       <div class="card"><h2>Levels</h2>
         <label class="switch"><input type="checkbox" name="levelsOn"${s.levels !== false && f.levels ? ' checked' : ''}${off(f.levels)}> Levels on${offNote(f.levels)}</label>
         ${f.levels ? levelFields(guild, s.levelConfig) : ''}
@@ -668,6 +752,7 @@ function readFullSetup(form, guild) {
     tempVoice: f.tempVoice.checked && !f.tempVoice.disabled,
     stats: statsOn ? { types: [...form.querySelectorAll('[name=statType]:checked')].map((i) => i.value), roleIds: [...(f.statRole?.selectedOptions ?? [])].map((o) => o.value) } : false,
     levels: guild.features.levels ? { enabled: f.levelsOn.checked, ...readLevelFields(f) } : undefined,
+    security: f.security.checked && !f.security.disabled,
   };
 }
 
@@ -697,6 +782,152 @@ export async function setup(main, ctx) {
 }
 
 // ---------------------------------------------------------------------------
+//   Security
+// ---------------------------------------------------------------------------
+
+const ROLE_HINT_HTML = 'Move the bot\'s role to the very top in <b>Server Settings → Roles</b> (drag it above every other role). It can only remove roles from, kick, ban or time out members whose roles are below its own, so raid protection depends on it.';
+const LIMITS = [
+  ['joinCount', 'Joins that start a raid'], ['joinSeconds', '…within this many seconds'], ['raidMinutes', 'Raid mode lasts (minutes)'],
+  ['accountAgeDays', 'New account filter: kick accounts younger than (days)'], ['floodCount', 'Flood: messages'], ['floodSeconds', '…within this many seconds'],
+  ['duplicateChannels', 'Flood: same message in this many channels'], ['mentionLimit', 'Mentions allowed in one message'],
+  ['nukeCount', 'Anti-nuke: destructive actions'], ['nukeSeconds', '…within this many seconds'],
+];
+const raidKind = (k) => (k === 'joins' ? 'Join raid' : 'Nuke attempt');
+const backupReason = { scheduled: 'Daily', raid: 'Raid', nuke: 'Nuke attempt', manual: 'By hand' };
+
+function moduleSwitch(m, on) {
+  return `<label class="switch top"><input type="checkbox" name="module" value="${esc(m.key)}"${on ? ' checked' : ''}>
+    <span><b>${esc(m.label)}</b>${m.fullSetup ? ' <span class="tag">full setup</span>' : ''}<br><span class="muted small">${esc(m.about)}</span></span></label>`;
+}
+
+function securityForm(guild, s) {
+  const always = s.modulesInfo.filter((m) => !m.reaction);
+  const reactions = s.modulesInfo.filter((m) => m.reaction);
+  return `<form class="card" id="security">
+    <h2>Protections</h2>
+    <p class="muted small">Switch on each protection you want. <b>Watching</b> ones act all the time; <b>raid reactions</b> act only once the join alarm or anti-nuke has started raid mode.</p>
+    <div class="grid">
+      <div><h3>Watching</h3>${always.map((m) => moduleSwitch(m, s.modules[m.key])).join('')}</div>
+      <div><h3>Join gate setup</h3>
+        <label class="field"><span>How to set it up</span><select name="gateMode">${option('auto', 'Set it up for me', (s.gateOptions ?? {}).mode !== 'manual')}${option('manual', "I'll choose the role and channel", (s.gateOptions ?? {}).mode === 'manual')}</select>
+          <span class="muted small"><b>For me:</b> makes a Verified role and #verify, gives everyone already here the role, and hides the server from @everyone. <b>My own:</b> posts the Verify button in your channel and hands out your role; who can see what is up to you.</span></label>
+        <div id="gatemanual"${(s.gateOptions ?? {}).mode === 'manual' ? '' : ' hidden'}>
+          <label class="field"><span>Role verified members get</span><select name="gateRole">${option('', 'Pick a role', !(s.gateOptions ?? {}).roleId)}${guild.roles.map((r) => option(r.id, `@${r.name}`, r.id === (s.gateOptions ?? {}).roleId)).join('')}</select></label>
+          <label class="field"><span>Channel for the Verify button</span><select name="gateChannel">${channelOptions(guild, (s.gateOptions ?? {}).channelId, 'Pick a channel')}</select></label>
+        </div>
+      </div>
+      <div><h3>Raid reactions</h3>${reactions.map((m) => moduleSwitch(m, s.modules[m.key])).join('')}
+        <label class="field"><span>Raid cleanup</span><select name="cleanup">${option('ask', 'Ask staff in the log channel', s.limits.cleanup === 'ask')}${option('kick', 'Kick them straight away', s.limits.cleanup === 'kick')}${option('ban', 'Ban them straight away', s.limits.cleanup === 'ban')}</select></label>
+      </div>
+    </div>
+    <h3>Limits</h3>
+    <div class="grid kpis">${LIMITS.map(([key, label]) => `<label class="field"><span>${esc(label)}</span><input type="number" name="${key}" value="${esc(s.limits[key])}" min="1"></label>`).join('')}</div>
+    <h3>Trusted</h3>
+    <p class="muted small">Protections never act on these roles and members, or on the server owner. Staff with Manage Messages are also left alone by the message checks. The bots already here were added the first time protection was set up; add any new ones, or anti-nuke may catch them.</p>
+    <div class="grid">
+      ${guild.roles.length ? `<label class="field"><span>Trusted roles</span><select name="trustedRoles" multiple size="${Math.min(6, guild.roles.length)}">${guild.roles.map((r) => option(r.id, `@${r.name}`, s.trusted.roles.includes(r.id))).join('')}</select>
+        <span class="muted small">Ctrl-click (⌘ on a Mac) to pick several.</span></label>` : ''}
+      <label class="field"><span>Trusted members and bots (user IDs, one per line)</span><textarea name="trustedUsers" rows="4">${esc(s.trusted.users.join('\n'))}</textarea></label>
+    </div>
+    <button class="primary" type="submit">Save</button>
+  </form>`;
+}
+
+/** A KPI tile; words (not one number) get a smaller size so they don't wrap one word per line. */
+const tile = (label, value, words = false) => `<div class="card kpi"><div class="value${words ? ' text' : ''}">${esc(value)}</div><div class="label">${esc(label)}</div></div>`;
+
+function backupsCard(guild) {
+  const b = guild.settings.backups;
+  const gone = b.missing.roles.length + b.missing.channels.length;
+  return `<div class="card" id="backups">
+    <h2>Backups</h2>
+    <div class="grid kpis">
+      ${tile('Backups kept', num(b.count))}
+      ${tile('Latest backup', b.list[0] ? ago(b.list[0].at) : 'none', true)}
+      ${tile('In the latest', b.list[0] ? `${num(b.list[0].roles)} roles · ${num(b.list[0].channels)} channels` : '—', true)}
+      ${tile('Deleted since then', num(gone))}
+    </div>
+    ${gone ? `<p>Gone since the latest backup: ${[...b.missing.roles.map((n) => `@${esc(n)}`), ...b.missing.channels.map((n) => `#${esc(n)}`)].slice(0, 30).join(', ')}${gone > 30 ? ', …' : ''}</p>` : ''}
+    ${b.list.length ? `<div class="table-wrap"><table><thead><tr><th>Taken</th><th>Why</th><th class="num">Roles</th><th class="num">Channels</th></tr></thead><tbody>
+      ${b.list.map((x) => `<tr><td title="${esc(dateTime(x.at))}">${esc(ago(x.at))}</td><td>${esc(backupReason[x.reason] ?? x.reason)}</td><td class="num">${num(x.roles)}</td><td class="num">${num(x.channels)}</td></tr>`).join('')}
+      </tbody></table></div>` : '<p class="muted">No backups yet. Switch on Backups, or take one now.</p>'}
+    <p class="muted small">Backups keep channels, roles and permissions (the newest 10), not messages. A restore makes again whatever from the latest backup is gone, and leaves everything else alone.</p>
+    <div class="row" style="margin-bottom:14px"><button id="backupnow">Back up now</button></div>
+    ${gone ? `<label class="field"><span>Type <b>${esc(guild.name)}</b> to restore the ${num(gone)} deleted role(s) and channel(s)</span><input type="text" id="restoreconfirm" autocomplete="off" spellcheck="false"></label>
+      <button class="danger" id="restore" disabled>Restore</button>` : ''}
+  </div>`;
+}
+
+function incidentsCard(s) {
+  return `<div class="card"><h2>Recent raids</h2>
+    ${s.incidents.length ? `<div class="table-wrap"><table><thead><tr><th>Started</th><th>What</th><th class="num">Joined</th><th class="num">Actions</th><th>Lasted</th></tr></thead><tbody>
+      ${s.incidents.map((i) => `<tr><td title="${esc(dateTime(i.startedAt))}">${esc(ago(i.startedAt))}</td><td>${raidKind(i.kind)}</td><td class="num">${num(i.joined)}</td><td class="num">${num(i.actions)}</td><td>${esc(duration(i.endedAt - i.startedAt))}</td></tr>`).join('')}
+      </tbody></table></div>` : '<p class="muted">No raids yet.</p>'}
+  </div>`;
+}
+
+export async function security(main, ctx) {
+  const { guildId } = ctx;
+  main.innerHTML = loading;
+  const guild = await api(`/api/guilds/${guildId}`);
+  const s = guild.settings.security;
+  const rerender = () => security(main, ctx);
+  if (!guild.features.security || !s) {
+    main.innerHTML = `${offlineBanner(guild.bot)}<div class="card"><h2>Raid protection</h2><p class="muted">Turned off in the bot's .env.</p></div>`;
+    return;
+  }
+  main.innerHTML = `${offlineBanner(guild.bot)}
+    ${s.roleTop ? '' : `<div class="banner warn">The bot's role (<b>@${esc(s.botRole)}</b>) isn't at the top. ${ROLE_HINT_HTML}</div>`}
+    ${s.hasLogChannel ? '' : '<div class="banner warn">There\'s no log channel, so raid alerts and the cleanup offer have nowhere to go. Set one in Settings.</div>'}
+    <div class="stack">
+      <div class="card"><h2>Right now</h2>
+        <p>${s.raid ? `🚨 <b>Raid mode is on</b> (${raidKind(s.raid.kind).toLowerCase()}, started ${esc(ago(s.raid.startedAt))}, ${num(s.raid.joined)} joined). It ends ${esc(ago(s.raid.until))}.` : '✅ No raid going on.'}</p>
+        <p>${s.lockdown ? `🔒 <b>Locked down</b> since ${esc(ago(s.lockdown.since))}${s.lockdown.auto ? ', until the raid ends' : ''}.` : 'Not locked down.'}</p>
+        <div class="row">${s.lockdown ? '<button class="primary" id="lockdown" data-on="0">End lockdown</button>' : '<button class="danger" id="lockdown" data-on="1">Lock down now</button>'}
+          <span class="muted small">Lockdown stops @everyone posting, raises verification to High and pauses invites, then puts them back.</span></div>
+      </div>
+      ${securityForm(guild, s)}
+      ${backupsCard(guild)}
+      ${incidentsCard(s)}
+    </div>`;
+
+  main.querySelector('#lockdown').addEventListener('click', (e) => {
+    const on = e.target.dataset.on === '1';
+    if (on && !confirm('Lock the server down now?')) return;
+    act(e.target, guildId, 'security.lockdown', { on }, rerender);
+  });
+  main.querySelector('#security').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const f = e.target.elements;
+    const modules = Object.fromEntries(s.modulesInfo.map((m) => [m.key, false]));
+    for (const box of e.target.querySelectorAll('[name=module]:checked')) modules[box.value] = true;
+    const limits = { cleanup: f.cleanup.value, ...Object.fromEntries(LIMITS.map(([key]) => [key, Number(f[key].value)])) };
+    const trusted = {
+      roles: [...(f.trustedRoles?.selectedOptions ?? [])].map((o) => o.value),
+      users: f.trustedUsers.value.split(/[\s,]+/).filter(Boolean),
+    };
+    const gateOptions = f.gateMode.value === 'manual' ? { mode: 'manual', roleId: f.gateRole.value, channelId: f.gateChannel.value } : { mode: 'auto' };
+    if (gateOptions.mode === 'manual' && (!gateOptions.roleId || !gateOptions.channelId)) return toast('Pick the role and channel for the join gate.', true);
+    if (modules.joinGate && gateOptions.mode === 'auto' && (!s.modules.joinGate || (s.gateOptions ?? {}).mode !== 'auto') && !confirm('Turning on the join gate makes a Verified role and a #verify channel, gives everyone already here the role, and hides the server from @everyone until they verify. Go ahead?')) return;
+    act(e.submitter, guildId, 'security.update', { modules, limits, trusted, gateOptions }, rerender);
+  });
+  main.querySelector('[name=gateMode]').addEventListener('change', (e) => {
+    main.querySelector('#gatemanual').hidden = e.target.value !== 'manual';
+  });
+  main.querySelector('#backupnow').addEventListener('click', (e) => act(e.target, guildId, 'security.backup', {}, rerender));
+  const input = main.querySelector('#restoreconfirm');
+  const restore = main.querySelector('#restore');
+  input?.addEventListener('input', () => {
+    input.dataset.dirty = '1';
+    restore.disabled = input.value !== guild.name;
+  });
+  restore?.addEventListener('click', () => {
+    if (!confirm('Restore the deleted roles and channels from the latest backup?')) return;
+    act(restore, guildId, 'security.restore', { confirm: input.value }, rerender);
+  });
+}
+
+// ---------------------------------------------------------------------------
 //   Moderation
 // ---------------------------------------------------------------------------
 
@@ -707,6 +938,8 @@ export async function moderation(main, ctx) {
   const filter = query.get('tickets') ?? 'open';
   const tickets = guild.tickets.list.filter((t) => (filter === 'all' ? true : filter === 'open' ? t.status !== 'archived' : t.status === filter));
   const c = guild.tickets.counts;
+  // A server's transcripts all share one deletion date, so any ticket's tells it.
+  const purgeAt = guild.tickets.list.find((t) => t.transcript)?.transcript.expiresAt ?? null;
 
   const warningRows = guild.warnings
     .map(
@@ -735,11 +968,13 @@ export async function moderation(main, ctx) {
         ${guild.settings.tickets
           ? `<div class="row" style="margin-bottom:12px">${tabs}</div>
             ${tickets.length
-              ? `<div class="table-wrap"><table><thead><tr><th>#</th><th>Subject</th><th>Status</th><th>Opened by</th><th>Claimed by</th><th>Opened</th><th>Closed</th></tr></thead><tbody>${tickets
+              ? `<div class="table-wrap"><table><thead><tr><th>#</th><th>Subject</th><th>Status</th><th>Opened by</th><th>Claimed by</th><th>Opened</th><th>Closed</th><th>Transcript</th></tr></thead><tbody>${tickets
                   .map((t) => `<tr><td>${String(t.number).padStart(4, '0')}</td><td>${t.type ? `<span class="muted small">${esc(t.type)}</span><br>` : ''}${esc(t.subject)}</td><td><span class="tag ${esc(t.status)}">${esc(t.status.toUpperCase())}</span></td>
-                    <td>${esc(t.opener)}</td><td>${esc(t.claimer ?? '—')}</td><td title="${esc(dateTime(t.createdAt))}">${esc(ago(t.createdAt))}</td><td>${t.closedAt ? esc(ago(t.closedAt)) : '—'}</td></tr>`)
+                    <td>${esc(t.opener)}</td><td>${esc(t.claimer ?? '—')}</td><td title="${esc(dateTime(t.createdAt))}">${esc(ago(t.createdAt))}</td><td>${t.closedAt ? esc(ago(t.closedAt)) : '—'}</td>
+                    <td>${t.transcript ? `<button class="small" data-transcript="${esc(t.number)}">Send to me</button>` : '<span class="muted small">—</span>'}</td></tr>`)
                   .join('')}</tbody></table></div>
-                <p class="muted small">Tickets are handled in their Discord channels; this list is read-only.</p>`
+                <p class="muted small">Tickets are handled in their Discord channels. <b>Send to me</b> messages a closed ticket's transcript to you on Discord, or use <code>/ticket export</code>.
+                  ${purgeAt ? `All of this server's transcripts are deleted together <b title="${esc(dateTime(purgeAt))}">${esc(ago(purgeAt))}</b> (${esc(dateTime(purgeAt))}); the next one after that starts a new 30-day countdown.` : 'Transcripts are kept for 30 days from the first one, then all deleted together.'}</p>`
               : '<div class="empty">No tickets here.</div>'}`
           : '<div class="empty">Tickets aren\'t set up in this server.</div>'}
       </div>
@@ -753,6 +988,9 @@ export async function moderation(main, ctx) {
   );
   main.querySelectorAll('[data-remove]').forEach((b) =>
     b.addEventListener('click', () => act(b, guildId, 'warnings.remove', { userId: b.dataset.remove, at: Number(b.dataset.at) }, () => moderation(main, ctx))),
+  );
+  main.querySelectorAll('[data-transcript]').forEach((b) =>
+    b.addEventListener('click', () => act(b, guildId, 'tickets.transcript', { number: Number(b.dataset.transcript) })),
   );
 }
 
