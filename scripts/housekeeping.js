@@ -22,7 +22,7 @@
  *   files    regenerable leftovers: the worker's bundles, Lavalink's logs and jar
  *            while music is shelved, data files no store reads.
  *   data     what data/ says, checked against what PRIVACY.md promises: opted-out
- *            members still counted, daily counts past 30 days, tickets left open.
+ *            members still counted, daily counts and transcripts past 30 days, tickets left open.
  *   config   places two files must agree: the worker the site talks to vs. the one
  *            the bot syncs with, the application ID in .env vs. wrangler.toml,
  *            the Pages address vs. the git remote; and settings nothing reads.
@@ -340,6 +340,18 @@ function checkData() {
     let old = 0;
     for (const member of Object.values(members)) old += Object.keys(member.daily ?? {}).filter((day) => day < cutoff).length;
     if (old) add('data', 'daily message counts older than 30 days', `server ${guildId}`, `${old} day(s) kept past what PRIVACY.md promises`);
+  }
+
+  // "Ticket transcripts: up to 30 days" (PRIVACY.md, section 8). A server's transcripts are all deleted
+  // together on its deleteAt, which src/features/transcripts.js sets 30 days after the first one closes.
+  for (const [guildId, cycle] of Object.entries(store('transcripts'))) {
+    const list = Object.values(cycle.list ?? {});
+    if (!list.length) continue;
+    const oldest = Math.min(...list.map((t) => t.closedAt ?? Date.now()));
+    const old = list.filter((t) => Date.now() - (t.closedAt ?? Date.now()) > 30 * DAY);
+    if (!cycle.deleteAt) add('data', 'transcripts with no delete date', `server ${guildId}`, `${list.length} transcript(s) that will never be deleted`);
+    else if (cycle.deleteAt - oldest > 30 * DAY + DAY) add('data', 'transcripts set to be kept past 30 days', `server ${guildId}`, `delete date ${new Date(cycle.deleteAt).toISOString().slice(0, 10)} is ${Math.round((cycle.deleteAt - oldest) / DAY)} days after the oldest closed`);
+    if (old.length) add('data', 'transcripts older than 30 days', `server ${guildId}`, `${old.map((t) => `#${t.number}`).join(', ')}; kept past what PRIVACY.md promises${cycle.deleteAt && cycle.deleteAt <= Date.now() ? ' (the delete date has passed: is the bot running?)' : ''}`);
   }
 
   // Tickets left open a month, and temporary voice rooms the bot still thinks exist.

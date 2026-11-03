@@ -114,7 +114,7 @@ It runs by itself after a successful `npm run sweep`, `npm run deploy` and `npm 
 
 - **code** (never changed): top-level functions and constants nothing uses, imports a file never reads, function bodies written twice, packages nothing imports or that aren't installed, and panel styles no page uses.
 - **files:** the worker's `wrangler dev` bundles, Lavalink's logs and jar while music is shelved, data files no store reads, and a saved word list identical to the repo's (while it exists, edits to `filter-words.txt` do nothing).
-- **the bot's data**, against what [PRIVACY.md](PRIVACY.md) promises: opted-out members still counted anywhere, daily message counts older than 30 days, tickets open for 30+ days. The live data is on the VM, so run it there too (`cd DaemonBot && npm run housekeeping`); it says when `data/` on this PC is an old copy.
+- **the bot's data**, against what [PRIVACY.md](PRIVACY.md) promises: opted-out members still counted anywhere, daily message counts older than 30 days, ticket transcripts kept (or set to be kept) past 30 days, tickets open for 30+ days. The live data is on the VM, so run it there too (`cd DaemonBot && npm run housekeeping`); it says when `data/` on this PC is an old copy.
 - **configuration:** the worker the bot syncs with vs. the one the site uses, the application ID in `.env` vs. `worker/wrangler.toml`, the Pages address vs. the git remote, `DEV_GUILD_ID` left set, settings in `.env` nothing reads, worker migrations out of sequence, placeholders left in the legal pages, and branches or stashes already done with.
 
 To delete the leftover files:
