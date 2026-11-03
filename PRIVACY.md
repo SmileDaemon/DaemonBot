@@ -30,7 +30,7 @@ Unless a Server's administrators ask us to turn them off (Section 7), the Servic
 - **Voice:** time spent in voice channels.
 - **Games:** games shown in a member's Discord activity status, and time spent in them. Each Server keeps its own record of this.
 - **Interactions:** counts of replies, mentions and reactions between members, and time spent together in voice or games.
-- **Server totals:** daily totals such as messages, active members, joins and leaves.
+- **Server totals:** totals such as messages, active members, joins and leaves.
 
 **Opting out:** members can opt out of these statistics in a Server by emailing smiledaemon77@gmail.com with the Server's name or ID and their Discord username or user ID. Statistics already kept about the member in that Server are deleted, and no more are kept there. Server totals are not affected.
 
@@ -70,7 +70,7 @@ The Service relies on these providers, each of which processes data under its ow
 | Provider | Role | What it handles |
 |---|---|---|
 | Discord Inc. | Platform and sign-in | Everything the Bot receives |
-| Cloudflare, Inc. | Hosts the Panel's server and database | Log entries, daily statistics, Server snapshots and Panel sessions |
+| Cloudflare, Inc. | Hosts the Panel's server and database | Log entries, Server statistics, Server snapshots and Panel sessions |
 | GitHub, Inc. | Hosts the Panel's website | Standard web request logs |
 | Oracle Corporation | Runs the Bot | Everything in Section 2 |
 
@@ -81,9 +81,10 @@ These providers may store and process data in the United States and in other cou
 | Information | Kept for |
 |---|---|
 | Log entries in the Panel's database, including deleted and edited message text | 90 days |
-| Daily Server statistics | 400 days |
+| Server statistics | Daily for 90 days, then as weekly and monthly totals until the Bot leaves the Server |
 | Daily message counts | 30 days |
 | Usage statistics | Until deleted on request, or until the Server's administrators delete them |
+| Interactions between two members | 180 days after their last interaction, after which only each member's overall totals are kept |
 | Levels and XP | Until the Server's administrators reset them, or until the member opts out |
 | Warnings and tickets | Until deleted by the Server's administrators or on request |
 | Ticket transcripts | Up to 30 days |
