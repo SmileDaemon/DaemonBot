@@ -27,7 +27,7 @@ function createStore(name) {
   }
 }
 
-/** Per-server settings, keyed by guild ID: { logChannelId, wordFilter, tickets: { channelId, staffRoleId, queueChannelId, pingStaff, categoryId, archiveCategoryId } } */
+/** Per-server settings, keyed by guild ID: { logChannelId, wordFilter, tickets: { sectionId, channelId, panelMessageId, types, staffRoleId, queueChannelId, pingStaff, categoryId, archiveCategoryId } } */
 export const guildConfig = createStore('config');
 
 /** Tickets, keyed by guild ID: { next, byChannel: { [channelId]: ticket } } */

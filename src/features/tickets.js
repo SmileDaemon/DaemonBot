@@ -6,9 +6,11 @@ import {
   EmbedBuilder,
   OverwriteType,
   PermissionFlagsBits,
+  StringSelectMenuBuilder,
   time,
 } from 'discord.js';
 import { COLORS, logEvent } from '../utils/logging.js';
+import { defaultColor } from '../utils/parse.js';
 import { notice } from '../utils/replies.js';
 import { guildConfig, tickets as ticketStore } from '../utils/store.js';
 
@@ -20,6 +22,10 @@ const STATUS = {
 
 export const MAX_OPEN_PER_USER = 3;
 const CATEGORY_LIMIT = 50; // Discord's limit of channels in one category
+const DEFAULT_TICKET_TYPES = ['Report A Problem'];
+const MAX_TYPES = 25; // the most a dropdown can hold
+const SECTION_NAME = 'Support Tickets';
+const PANEL_CHANNEL_NAME = 'Create A Ticket';
 
 const TALK = [
   PermissionFlagsBits.ViewChannel,
@@ -67,8 +73,43 @@ const number = (ticket) => `#${String(ticket.number).padStart(4, '0')}`;
 const channelName = (ticket) =>
   `${ticket.status === 'archived' ? 'closed' : 'ticket'}-${String(ticket.number).padStart(4, '0')}-${ticket.openerName}`.slice(0, 100);
 
+/** Without a staff role, tickets are for admins only. */
 const isStaff = (member, settings) =>
-  member.permissions.has(PermissionFlagsBits.Administrator) || member.roles.cache.has(settings.staffRoleId);
+  member.permissions.has(PermissionFlagsBits.Administrator) || Boolean(settings.staffRoleId && member.roles.cache.has(settings.staffRoleId));
+
+/** One ticket type per line, as typed into the setup form. Blank means just the default. */
+export function parseTicketTypes(text) {
+  const types = [...new Set(String(text ?? '').split(/\r?\n/).map((t) => t.trim().slice(0, 100)).filter(Boolean))];
+  return (types.length ? types : DEFAULT_TICKET_TYPES).slice(0, MAX_TYPES);
+}
+export const ticketTypes = (settings) => (settings?.types?.length ? settings.types : DEFAULT_TICKET_TYPES);
+
+/** The dropdown members open tickets from. Each option's value is the type's place in the list. */
+export function ticketTypeMenu(settings) {
+  return new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId('ticket:type')
+      .setPlaceholder('What do you need help with?')
+      .addOptions(ticketTypes(settings).map((label, i) => ({ label, value: String(i) }))),
+  );
+}
+
+function panelMessage(settings) {
+  const embed = new EmbedBuilder()
+    .setTitle('Need help?')
+    .setColor(defaultColor)
+    .setDescription(
+      'Pick what your ticket is about from the menu below to start a private conversation with the staff team. ' +
+        'You get your own channel that only you and staff can see.\n\n' +
+        'After your ticket is closed it moves to the archive, where you can still read it but not post.',
+    );
+  return { embeds: [embed], components: [ticketTypeMenu(settings)] };
+}
+
+/** Puts the dropdown back to its placeholder, so the same type can be picked again. */
+export async function resetPanel(message, guildId) {
+  if (message?.id === ticketSettings(guildId)?.panelMessageId) await message.edit(panelMessage(ticketSettings(guildId))).catch(() => {});
+}
 
 /** The queue only exists when it's a separate channel: anywhere else, a card would show who needs help and why. */
 const hasQueue = (settings) => Boolean(settings.queueChannelId && settings.queueChannelId !== settings.channelId);
@@ -89,6 +130,7 @@ function ticketEmbed(ticket, { showDetails = true } = {}) {
       { name: 'Channel', value: `<#${ticket.channelId}>`, inline: true },
     )
     .setTimestamp(ticket.createdAt);
+  if (ticket.type) embed.addFields({ name: 'Type', value: ticket.type, inline: true });
   if (showDetails) embed.setDescription(ticket.details);
   if (ticket.closedById) {
     embed.addFields({ name: 'Closed by', value: `<@${ticket.closedById}> ${time(new Date(ticket.closedAt), 'R')}`, inline: true });
@@ -120,7 +162,8 @@ async function refreshMessages(guild, ticket, settings, channel) {
   await channel.messages.edit(ticket.introMessageId, introMessage(ticket, settings)).catch(() => {});
 }
 
-const staffOverwrite = (roleId) => ({ id: roleId, type: OverwriteType.Role, allow: TALK });
+/** The staff role's access, or nothing when tickets are for admins only. */
+const staffOverwrite = (roleId) => (roleId ? [{ id: roleId, type: OverwriteType.Role, allow: TALK }] : []);
 const hiddenFromEveryone = (guild) => ({ id: guild.id, type: OverwriteType.Role, deny: [PermissionFlagsBits.ViewChannel] });
 const botOverwrite = (guild) => ({
   id: guild.members.me.id,
@@ -132,7 +175,7 @@ function createCategory(guild, name, staffRoleId) {
   return guild.channels.create({
     name,
     type: ChannelType.GuildCategory,
-    permissionOverwrites: [hiddenFromEveryone(guild), staffOverwrite(staffRoleId), botOverwrite(guild)],
+    permissionOverwrites: [hiddenFromEveryone(guild), ...staffOverwrite(staffRoleId), botOverwrite(guild)],
     reason: 'Ticket categories',
   });
 }
@@ -140,7 +183,7 @@ function createCategory(guild, name, staffRoleId) {
 const childCount = (guild, categoryId) => guild.channels.cache.filter((c) => c.parentId === categoryId).size;
 
 /** The categories tickets live in, made if they're missing. Servers set up before tickets were channels get them on their next ticket. */
-export async function ticketCategories(guild, settings, wanted = {}) {
+async function ticketCategories(guild, settings, wanted = {}) {
   const usable = (id) => (guild.channels.cache.get(id)?.type === ChannelType.GuildCategory ? id : null);
   const categoryId = wanted.categoryId ?? usable(settings.categoryId) ?? (await createCategory(guild, 'Tickets', settings.staffRoleId)).id;
   const archiveCategoryId =
@@ -167,13 +210,51 @@ async function archiveCategoryFor(guild, settings) {
 /** Hands every ticket over to a new staff role, so the old role stops seeing them. */
 export async function changeStaffRole(guild, oldRoleId, newRoleId) {
   const settings = ticketSettings(guild.id);
-  const places = [settings?.categoryId, settings?.archiveCategoryId, ...allTickets(guild.id).map((t) => t.channelId)];
+  // The section with the "Create A Ticket" channel is open to everyone; only the archive and the tickets themselves are staff-only.
+  const places = [settings?.archiveCategoryId, ...allTickets(guild.id).map((t) => t.channelId)];
+  if (settings?.categoryId && settings.categoryId !== settings.sectionId) places.push(settings.categoryId);
   for (const id of new Set(places)) {
     const channel = guild.channels.cache.get(id);
     if (!channel?.permissionOverwrites) continue; // gone, or one of the old private threads
-    await channel.permissionOverwrites.delete(oldRoleId, 'Ticket staff role changed').catch(() => {});
-    await channel.permissionOverwrites.edit(newRoleId, TALK_EDIT, { reason: 'Ticket staff role changed' });
+    if (oldRoleId) await channel.permissionOverwrites.delete(oldRoleId, 'Ticket staff role changed').catch(() => {});
+    if (newRoleId) await channel.permissionOverwrites.edit(newRoleId, TALK_EDIT, { reason: 'Ticket staff role changed' });
   }
+}
+
+/**
+ * Makes the "Support Tickets" section, its "Create A Ticket" channel with the dropdown, and the archive,
+ * reusing whatever already exists. Run again, it updates the dropdown instead of posting another.
+ */
+export async function setupTicketSection(guild, { staffRoleId = null, queueChannelId = null, pingStaff = false, types }) {
+  const saved = ticketSettings(guild.id) ?? {};
+  const me = guild.members.me;
+  const reason = 'Tickets set up';
+  if ((saved.staffRoleId ?? null) !== staffRoleId && (saved.staffRoleId || staffRoleId)) await changeStaffRole(guild, saved.staffRoleId ?? null, staffRoleId);
+
+  const existing = (id, type) => (guild.channels.cache.get(id)?.type === type ? guild.channels.cache.get(id) : null);
+  const section = existing(saved.sectionId, ChannelType.GuildCategory) ??
+    (await guild.channels.create({ name: SECTION_NAME, type: ChannelType.GuildCategory, reason }));
+  // Everyone can see this channel and pick from the dropdown, but nobody posts in it.
+  let channel = existing(saved.channelId, ChannelType.GuildText);
+  if (channel?.parentId !== section.id) {
+    channel = await guild.channels.create({
+      name: PANEL_CHANNEL_NAME,
+      type: ChannelType.GuildText,
+      parent: section.id,
+      permissionOverwrites: [
+        { id: guild.id, type: OverwriteType.Role, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory], deny: [PermissionFlagsBits.SendMessages, PermissionFlagsBits.CreatePublicThreads, PermissionFlagsBits.CreatePrivateThreads, PermissionFlagsBits.AddReactions] },
+        { id: me.id, type: OverwriteType.Member, allow: [...TALK, PermissionFlagsBits.ManageMessages] },
+      ],
+      reason,
+    });
+  }
+  const { archiveCategoryId } = await ticketCategories(guild, { ...saved, staffRoleId }, { categoryId: section.id });
+
+  const settings = { ...saved, sectionId: section.id, categoryId: section.id, archiveCategoryId, channelId: channel.id, staffRoleId, queueChannelId, pingStaff: Boolean(pingStaff && staffRoleId), types };
+  const old = saved.channelId === channel.id && saved.panelMessageId ? await channel.messages.fetch(saved.panelMessageId).catch(() => null) : null;
+  const panel = old ? await old.edit(panelMessage(settings)) : await channel.send(panelMessage(settings));
+  saveSettings(guild.id, { ...settings, panelMessageId: panel.id });
+  return { section, channel, archiveCategoryId, fresh: !saved.channelId };
 }
 
 /** Is this one of the bot's ticket channels, or in a ticket category? Their comings and goings aren't server news. */
@@ -198,7 +279,7 @@ async function openTicketsOf(guild, userId) {
 }
 
 /** Returns an error message if something is wrong, otherwise the new channel. */
-export async function openTicket(interaction, subject, details) {
+export async function openTicket(interaction, subject, details, type = null) {
   const { guild, user } = interaction;
   const settings = ticketSettings(guild.id);
   if (!settings) return { error: "Tickets aren't set up in this server yet. An admin can run `/setup tickets`." };
@@ -214,6 +295,7 @@ export async function openTicket(interaction, subject, details) {
     number: data.next++,
     subject,
     details,
+    type,
     openerId: user.id,
     openerName: user.username,
     status: 'pending',
@@ -231,10 +313,10 @@ export async function openTicket(interaction, subject, details) {
       name: channelName(ticket),
       type: ChannelType.GuildText,
       parent: categories.categoryId,
-      topic: `Ticket ${number(ticket)} · ${subject}`.slice(0, 1024),
+      topic: `Ticket ${number(ticket)}${type ? ` · ${type}` : ''} · ${subject}`.slice(0, 1024),
       permissionOverwrites: [
         hiddenFromEveryone(guild),
-        staffOverwrite(settings.staffRoleId),
+        ...staffOverwrite(settings.staffRoleId),
         botOverwrite(guild),
         { id: user.id, type: OverwriteType.Member, allow: TALK },
       ],
@@ -286,7 +368,9 @@ export async function claimTicket(interaction, channelId) {
   const settings = ticketSettings(guild.id);
   const ticket = getTicket(guild.id, channelId);
   if (!settings || !ticket) return { error: "I couldn't find that ticket." };
-  if (!isStaff(member, settings)) return { error: `Only members with <@&${settings.staffRoleId}> can claim tickets.` };
+  if (!isStaff(member, settings)) {
+    return { error: settings.staffRoleId ? `Only members with <@&${settings.staffRoleId}> can claim tickets.` : 'Only admins can claim tickets.' };
+  }
   if (ticket.status === 'active') return { error: `Already claimed by <@${ticket.claimerId}>.` };
   if (ticket.status === 'archived') return { error: 'That ticket is already closed.' };
   const channel = await guild.channels.fetch(channelId).catch(() => null);

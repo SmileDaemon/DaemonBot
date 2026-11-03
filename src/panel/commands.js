@@ -102,11 +102,13 @@ const HANDLERS = {
     const tickets = { ...config.tickets };
     const changes = [];
 
-    if (payload.staffRoleId) {
-      if (!guild.roles.cache.has(payload.staffRoleId)) refuse("That role doesn't exist anymore.");
-      if (payload.staffRoleId !== tickets.staffRoleId) await changeStaffRole(guild, tickets.staffRoleId, payload.staffRoleId);
-      tickets.staffRoleId = payload.staffRoleId;
-      changes.push({ name: 'Staff role', value: `<@&${payload.staffRoleId}>`, inline: true });
+    if ('staffRoleId' in payload) {
+      const id = payload.staffRoleId || null; // none: admins only
+      if (id && !guild.roles.cache.has(id)) refuse("That role doesn't exist anymore.");
+      if (id !== (tickets.staffRoleId ?? null)) await changeStaffRole(guild, tickets.staffRoleId ?? null, id);
+      tickets.staffRoleId = id;
+      if (!id) tickets.pingStaff = false;
+      changes.push({ name: 'Staff role', value: id ? `<@&${id}>` : 'None (admins only)', inline: true });
     }
     if ('queueChannelId' in payload) {
       const id = payload.queueChannelId || null;

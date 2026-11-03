@@ -1,150 +1,221 @@
 import {
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
   ChannelType,
-  EmbedBuilder,
   InteractionContextType,
+  LabelBuilder,
   MessageFlags,
+  ModalBuilder,
+  OverwriteType,
   PermissionFlagsBits,
+  RoleSelectMenuBuilder,
   SlashCommandBuilder,
+  StringSelectMenuBuilder,
+  TextInputBuilder,
+  TextInputStyle,
 } from 'discord.js';
+import { addStats, DEFAULT_STATS, MAX_STATS, statSettings } from '../../features/statChannels.js';
 import { BOT_NEEDS as TEMP_VOICE_NEEDS, handleTempVoice, removeTempVoice, setupTempVoice, tempVoiceSettings } from '../../features/tempVoice.js';
-import { changeStaffRole, ticketCategories } from '../../features/tickets.js';
+import { parseTicketTypes, setupTicketSection, ticketSettings, ticketTypes } from '../../features/tickets.js';
 import { COLORS, logEvent } from '../../utils/logging.js';
-import { defaultColor } from '../../utils/parse.js';
 import { ephemeral, notice } from '../../utils/replies.js';
 import { guildConfig } from '../../utils/store.js';
 
-const BOT_NEEDS_IN_TICKET_CHANNEL = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks];
-// To make each ticket's channel and choose who can see it. The bot can only hand out permissions it has itself.
-const BOT_NEEDS_FOR_TICKETS = [
-  ...BOT_NEEDS_IN_TICKET_CHANNEL,
-  PermissionFlagsBits.ManageChannels,
-  PermissionFlagsBits.ManageRoles,
-  PermissionFlagsBits.ReadMessageHistory,
-  PermissionFlagsBits.AttachFiles,
-];
-const BOT_NEEDS_IN_CATEGORY = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ManageChannels];
-const BOT_NEEDS_IN_LOG_CHANNEL = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.AttachFiles];
+const P = PermissionFlagsBits;
+// To make the ticket section and each ticket's channel. The bot can only hand out permissions it has itself.
+const BOT_NEEDS_FOR_TICKETS = [P.ViewChannel, P.SendMessages, P.EmbedLinks, P.AttachFiles, P.ReadMessageHistory, P.ManageChannels, P.ManageRoles, P.ManageMessages];
+const BOT_NEEDS_FOR_STATS = [P.ViewChannel, P.ManageChannels, P.Connect];
+const BOT_NEEDS_IN_LOG_CHANNEL = [P.ViewChannel, P.SendMessages, P.EmbedLinks, P.AttachFiles];
+const LOG_CHANNEL_NAME = 'bot-logs';
 
-const tempVoiceOff = () => process.env.ENABLE_TEMP_VOICE !== 'true';
+class Refused extends Error {}
+const refuse = (message) => {
+  throw new Refused(message);
+};
+const off = (flag) => process.env[flag] !== 'true';
 
-async function tickets(interaction) {
-  const channel = interaction.options.getChannel('channel', true);
-  const staffRole = interaction.options.getRole('staff_role', true);
-  const queueChannel = interaction.options.getChannel('queue_channel');
-  const category = interaction.options.getChannel('category');
-  const archiveCategory = interaction.options.getChannel('archive_category');
-  const me = interaction.guild.members.me;
+// ---------------------------------------------------------------------------
+//   Each part, at its default when run from /setup full
+// ---------------------------------------------------------------------------
 
-  if (!me.permissions.has(BOT_NEEDS_FOR_TICKETS)) {
-    return interaction.reply(
-      ephemeral('In this server I need: View Channels, Send Messages, Embed Links, Attach Files, Read Message History, Manage Channels, and Manage Roles.'),
+function checkTickets(guild) {
+  if (!guild.members.me.permissions.has(BOT_NEEDS_FOR_TICKETS)) {
+    refuse('For tickets I need: View Channels, Send Messages, Embed Links, Attach Files, Read Message History, Manage Messages, Manage Channels, and Manage Roles.');
+  }
+}
+
+async function setUpTickets(guild, user, options) {
+  checkTickets(guild);
+  const { section, channel, fresh } = await setupTicketSection(guild, options);
+  await logEvent(guild, {
+    title: fresh ? 'Ticket system set up' : 'Ticket system updated',
+    color: COLORS.ticket,
+    user,
+    fields: [
+      { name: 'Channel', value: `${channel}`, inline: true },
+      { name: 'Staff role', value: options.staffRoleId ? `<@&${options.staffRoleId}>` : 'Admins only', inline: true },
+      { name: 'Types', value: options.types.join(', ').slice(0, 1024) },
+    ],
+  });
+  return { section, channel };
+}
+
+const ticketDefaults = (guild) => {
+  const saved = ticketSettings(guild.id);
+  return { staffRoleId: saved?.staffRoleId ?? null, queueChannelId: saved?.queueChannelId ?? null, pingStaff: saved?.pingStaff ?? false, types: ticketTypes(saved) };
+};
+
+async function setUpStats(guild, user, picks) {
+  if (off('ENABLE_STAT_CHANNELS')) refuse("Server stats are turned off in the bot's .env.");
+  if (!guild.members.me.permissions.has(BOT_NEEDS_FOR_STATS)) refuse('For server stats I need: View Channels, Manage Channels, and Connect.');
+  const { added, skipped } = await addStats(guild, picks);
+  await logEvent(guild, { title: 'Server stats set up', color: COLORS.info, user, fields: [{ name: 'Added', value: String(added), inline: true }] });
+  return { added, skipped };
+}
+
+async function setUpTempVoice(guild, user) {
+  if (off('ENABLE_TEMP_VOICE')) refuse("Temporary voice channels are turned off in the bot's .env.");
+  if (!guild.members.me.permissions.has(TEMP_VOICE_NEEDS)) {
+    refuse('For temporary voice channels I need: View Channels, Connect, Send Messages, Embed Links, Manage Channels, Manage Roles, and Move Members.');
+  }
+  const result = await setupTempVoice(guild);
+  await logEvent(guild, { title: 'Temporary voice channels set up', color: COLORS.info, user, fields: [{ name: 'Join channel', value: `${result.hub}`, inline: true }] });
+  return result;
+}
+
+/** Sets the log channel, or turns logging off. Logged before turning off and after turning on, so either way it's recorded. */
+async function setLogChannel(guild, user, channel) {
+  if (channel && !channel.permissionsFor(guild.members.me).has(BOT_NEEDS_IN_LOG_CHANNEL)) {
+    refuse(`I need View Channel, Send Messages, Embed Links, and Attach Files in ${channel} first.`);
+  }
+  const entry = { title: `Log channel ${channel ? `set to #${channel.name}` : 'turned off'}`, color: COLORS.info, user };
+  if (!channel) await logEvent(guild, entry);
+  guildConfig.set(guild.id, { ...guildConfig.get(guild.id, {}), logChannelId: channel?.id ?? null });
+  if (channel) await logEvent(guild, entry);
+}
+
+/** For /setup full: the log channel there is, or a new staff-only one. */
+async function defaultLogChannel(guild, user) {
+  const current = guild.channels.cache.get(guildConfig.get(guild.id, {}).logChannelId);
+  if (current) return { channel: current, made: false };
+  if (!guild.members.me.permissions.has([P.ManageChannels, P.ManageRoles, ...BOT_NEEDS_IN_LOG_CHANNEL])) refuse('For a log channel I need Manage Channels and Manage Roles.');
+  const channel = await guild.channels.create({
+    name: LOG_CHANNEL_NAME,
+    type: ChannelType.GuildText,
+    permissionOverwrites: [
+      { id: guild.id, type: OverwriteType.Role, deny: [P.ViewChannel] },
+      { id: guild.members.me.id, type: OverwriteType.Member, allow: BOT_NEEDS_IN_LOG_CHANNEL },
+    ],
+    reason: 'Log channel made by /setup full',
+  });
+  await setLogChannel(guild, user, channel);
+  return { channel, made: true };
+}
+
+// ---------------------------------------------------------------------------
+//   The subcommands
+// ---------------------------------------------------------------------------
+
+/** /setup tickets asks for the ticket types first. Its options ride along in the form's ID. */
+function ticketsForm(interaction) {
+  checkTickets(interaction.guild);
+  const role = interaction.options.getRole('staff_role');
+  const queue = interaction.options.getChannel('queue_channel');
+  if (queue && !queue.permissionsFor(interaction.guild.members.me).has([P.ViewChannel, P.SendMessages, P.EmbedLinks])) {
+    refuse(`I need View Channel, Send Messages, and Embed Links in ${queue}.`);
+  }
+  const ping = interaction.options.getBoolean('ping_staff') ? 1 : 0;
+  const types = new TextInputBuilder()
+    .setCustomId('types')
+    .setStyle(TextInputStyle.Paragraph)
+    .setRequired(false)
+    .setMaxLength(2000)
+    .setValue(ticketTypes(ticketSettings(interaction.guild.id)).join('\n'));
+  return interaction.showModal(
+    new ModalBuilder()
+      .setCustomId(`setup:tickets:${role?.id ?? '-'}:${queue?.id ?? '-'}:${ping}`)
+      .setTitle('Set up tickets')
+      .addLabelComponents(
+        new LabelBuilder()
+          .setLabel('Ticket types, one per line')
+          .setDescription('These fill the dropdown in "Create A Ticket". Leave blank for just "Report A Problem".')
+          .setTextInputComponent(types),
+      ),
+  );
+}
+
+async function ticketsSubmit(interaction) {
+  const [, , role, queue, ping] = interaction.customId.split(':');
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const types = parseTicketTypes(interaction.fields.getTextInputValue('types'));
+  const staffRoleId = role === '-' ? null : role;
+  const queueChannelId = queue === '-' ? null : queue;
+  const { section, channel } = await setUpTickets(interaction.guild, interaction.user, { staffRoleId, queueChannelId, pingStaff: ping === '1', types });
+  const notes = [
+    `✅ Members open tickets from the dropdown in ${channel}, in **${section.name}**. Types: ${types.map((t) => `**${t}**`).join(', ')}.`,
+    `Each ticket gets its own channel that only its creator and ${staffRoleId ? `<@&${staffRoleId}>` : 'admins'} can see. Closed tickets move to an archive, where the creator can read but not post.`,
+    staffRoleId ? null : 'To let a staff role handle tickets too, run this again with `staff_role`.',
+    queueChannelId ? `New tickets are also listed in <#${queueChannelId}>, with their details, so make sure only staff can see it.` : 'Staff claim each ticket from a button inside its channel.',
+  ];
+  await interaction.editReply(notice(notes.filter(Boolean).join('\n\n'), { tone: 'success', title: 'Tickets are set up' }));
+}
+
+/** /setup serverstats asks which stats to show besides members and bots. */
+function statsForm(interaction) {
+  if (off('ENABLE_STAT_CHANNELS')) refuse("Server stats are turned off in the bot's .env.");
+  const shown = new Set(statSettings(interaction.guild).stats.map((s) => s.type));
+  const extras = statSettings(interaction.guild).types.filter((t) => !t.role && !DEFAULT_STATS.includes(t.type));
+  const modal = new ModalBuilder().setCustomId('setup:serverstats').setTitle('Set up server stats');
+  if (extras.length) {
+    modal.addLabelComponents(
+      new LabelBuilder()
+        .setLabel('Other stats to show')
+        .setDescription('Members and bots are always added.')
+        .setStringSelectMenuComponent(
+          new StringSelectMenuBuilder()
+            .setCustomId('types')
+            .setRequired(false)
+            .setMinValues(0)
+            .setMaxValues(extras.length)
+            .addOptions(extras.map((t) => ({ label: t.label, value: t.type, default: shown.has(t.type) }))),
+        ),
     );
   }
-  if (!channel.permissionsFor(me).has(BOT_NEEDS_IN_TICKET_CHANNEL)) {
-    return interaction.reply(ephemeral(`In ${channel} I need: View Channel, Send Messages, and Embed Links.`));
-  }
-  for (const c of [category, archiveCategory]) {
-    if (c && !c.permissionsFor(me).has(BOT_NEEDS_IN_CATEGORY)) return interaction.reply(ephemeral(`In ${c} I need View Channel and Manage Channels.`));
-  }
-  if (category && category.id === archiveCategory?.id) return interaction.reply(ephemeral('Open and archived tickets need different categories.'));
-  if (queueChannel && !queueChannel.permissionsFor(me).has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks])) {
-    return interaction.reply(ephemeral(`I need View Channel, Send Messages, and Embed Links in ${queueChannel}.`));
-  }
-
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
-  // Members only talk inside their own ticket channels, not in the channel with the button.
-  const lockedDown = await channel.permissionOverwrites
-    .edit(
-      interaction.guild.roles.everyone,
-      { SendMessages: false, CreatePublicThreads: false, CreatePrivateThreads: false },
-      { reason: `Ticket channel set up by ${interaction.user.tag}` },
-    )
-    .then(() => true, () => false);
-
-  const panel = new EmbedBuilder()
-    .setTitle('Need help?')
-    .setDescription(
-      'Click **Open a ticket** to start a private conversation with the staff team. You get your own channel that only you and staff can see.\n\n' +
-        'After your ticket is closed it moves to the archive, where you can still read it but not post.',
-    )
-    .setColor(defaultColor);
-  await channel.send({
-    embeds: [panel],
-    components: [
-      new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('ticket:open').setLabel('Open a ticket').setEmoji('🎫').setStyle(ButtonStyle.Primary),
-      ),
-    ],
-  });
-
-  const config = guildConfig.get(interaction.guild.id, {});
-  if (config.tickets && config.tickets.staffRoleId !== staffRole.id) await changeStaffRole(interaction.guild, config.tickets.staffRoleId, staffRole.id);
-  const categories = await ticketCategories(
-    interaction.guild,
-    { ...config.tickets, staffRoleId: staffRole.id },
-    { categoryId: category?.id, archiveCategoryId: archiveCategory?.id },
+  modal.addLabelComponents(
+    new LabelBuilder()
+      .setLabel('Roles to count')
+      .setDescription(`Each gets a channel showing how many members have it (${MAX_STATS} channels at most).`)
+      .setRoleSelectMenuComponent(new RoleSelectMenuBuilder().setCustomId('roles').setRequired(false).setMinValues(0).setMaxValues(8)),
   );
-  guildConfig.set(interaction.guild.id, {
-    ...guildConfig.get(interaction.guild.id, {}),
-    tickets: {
-      ...config.tickets,
-      ...categories,
-      channelId: channel.id,
-      staffRoleId: staffRole.id,
-      queueChannelId: queueChannel?.id ?? null,
-      pingStaff: interaction.options.getBoolean('ping_staff') ?? false,
-    },
-  });
+  return interaction.showModal(modal);
+}
 
-  const notes = [
-    `✅ Tickets are set up. The "Open a ticket" button is in ${channel}, and ${staffRole} members can see and claim tickets.`,
-    `Open tickets go in <#${categories.categoryId}>. Closed ones move to <#${categories.archiveCategoryId}>, where whoever opened them can read but not post.`,
-    queueChannel
-      ? `New tickets are also listed in ${queueChannel}, with their full details, so make sure only staff can see it.`
-      : 'Staff claim each ticket from a button inside its channel.',
-    lockedDown
-      ? `I stopped @everyone from posting directly in ${channel}; they talk in their own ticket channels.`
-      : `⚠️ I couldn't change ${channel}'s permissions. Turn off "Send Messages" for @everyone there yourself.`,
-    `Everyone who should be able to open tickets needs to be able to **see** ${channel}.`,
-  ];
-  await interaction.editReply(notice(notes.join('\n\n'), { tone: 'success', title: 'Tickets are set up' }));
-  await logEvent(interaction.guild, {
-    title: 'Ticket system set up',
-    color: COLORS.ticket,
-    user: interaction.user,
-    fields: [
-      { name: 'Ticket channel', value: `${channel}`, inline: true },
-      { name: 'Queue', value: queueChannel ? `${queueChannel}` : 'None', inline: true },
-      { name: 'Staff role', value: `${staffRole}`, inline: true },
-    ],
-  });
+async function statsSubmit(interaction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  let types = [];
+  try {
+    types = interaction.fields.getStringSelectValues('types');
+  } catch {} // no extra stats were offered
+  const roleIds = [...(interaction.fields.getSelectedRoles('roles')?.keys() ?? [])];
+  const { added, skipped } = await setUpStats(interaction.guild, interaction.user, { types: [...DEFAULT_STATS, ...types], roleIds });
+  const now = statSettings(interaction.guild).stats.length;
+  await interaction.editReply(
+    notice(
+      `${added ? `Added ${added} stat channel${added === 1 ? '' : 's'}` : 'Nothing new to add'}; ${now} in all, as locked voice channels everyone can see but not join. ` +
+        "Counts update by themselves, though Discord allows a channel's name to change only twice every 10 minutes." +
+        (skipped ? `\n\n⚠️ ${skipped} didn't fit: a server can have ${MAX_STATS}. Remove some in the control panel's Server Stats tab first.` : ''),
+      { tone: skipped ? 'warn' : 'success', title: 'Server stats are set up' },
+    ),
+  );
 }
 
 async function logs(interaction) {
-  const config = guildConfig.get(interaction.guild.id, {});
   const channel = interaction.options.getChannel('channel');
-  if (channel && !channel.permissionsFor(interaction.guild.members.me).has(BOT_NEEDS_IN_LOG_CHANNEL)) {
-    return interaction.reply(ephemeral(`I need View Channel, Send Messages, Embed Links, and Attach Files in ${channel} first.`));
-  }
-  // Log the change before turning logging off, and after turning it on, so either way it's recorded.
-  const entry = { title: `Log channel ${channel ? `set to #${channel.name}` : 'turned off'}`, color: COLORS.info, user: interaction.user };
-  if (!channel) await logEvent(interaction.guild, entry);
-  guildConfig.set(interaction.guild.id, { ...config, logChannelId: channel?.id ?? null });
-  if (channel) await logEvent(interaction.guild, entry);
+  await setLogChannel(interaction.guild, interaction.user, channel);
   await interaction.reply(ephemeral(channel ? `Logs will be posted in ${channel}.` : 'Logging turned off.', 'success'));
 }
 
 async function tempVoice(interaction) {
-  if (tempVoiceOff()) return interaction.reply(ephemeral("Temporary voice channels are turned off in the bot's .env."));
-  if (!interaction.guild.members.me.permissions.has(TEMP_VOICE_NEEDS)) {
-    return interaction.reply(ephemeral('In this server I need: View Channels, Connect, Send Messages, Embed Links, Manage Channels, Manage Roles, and Move Members.'));
-  }
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-  const { category, hub, fresh } = await setupTempVoice(interaction.guild);
+  const { category, hub, fresh } = await setUpTempVoice(interaction.guild, interaction.user);
   await interaction.editReply(
     notice(
       `Anyone who joins ${hub} gets their own voice channel in **${category.name}**, named after them, with buttons in its chat to manage it. ` +
@@ -152,16 +223,10 @@ async function tempVoice(interaction) {
       { tone: 'success', title: fresh ? 'Temporary voice channels are set up' : 'Temporary voice channels checked' },
     ),
   );
-  await logEvent(interaction.guild, {
-    title: 'Temporary voice channels set up',
-    color: COLORS.info,
-    user: interaction.user,
-    fields: [{ name: 'Join channel', value: `${hub}`, inline: true }],
-  });
 }
 
 async function removeTempVoiceCommand(interaction) {
-  if (!tempVoiceSettings(interaction.guild.id)) return interaction.reply(ephemeral("Temporary voice channels aren't set up here."));
+  if (!tempVoiceSettings(interaction.guild.id)) refuse("Temporary voice channels aren't set up here.");
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const { left } = await removeTempVoice(interaction.guild);
   await interaction.editReply(
@@ -173,51 +238,97 @@ async function removeTempVoiceCommand(interaction) {
   await logEvent(interaction.guild, { title: 'Temporary voice channels removed', color: COLORS.info, user: interaction.user });
 }
 
-const RUN = { tickets, logs, 'temp-voice': tempVoice, 'remove-temp-voice': removeTempVoiceCommand };
+/** Everything at its defaults, one after another. A part that can't be set up is reported, and the rest still run. */
+async function full(interaction) {
+  const { guild, user } = interaction;
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const parts = [
+    ['Log channel', async () => {
+      const { channel, made } = await defaultLogChannel(guild, user);
+      return made ? `${channel}, made for staff only` : `${channel}, kept as it was`;
+    }],
+    ['Tickets', async () => {
+      const { channel } = await setUpTickets(guild, user, ticketDefaults(guild));
+      return `dropdown in ${channel}${ticketSettings(guild.id).staffRoleId ? '' : '; admins only, so add a staff role with `/setup tickets`'}`;
+    }],
+    ['Temporary voice', async () => `join ${(await setUpTempVoice(guild, user)).hub} to make a channel`],
+    ['Server stats', async () => {
+      await setUpStats(guild, user, { types: DEFAULT_STATS });
+      return `${statSettings(guild).stats.length} stat channel(s); add more with \`/setup serverstats\``;
+    }],
+  ];
+  const lines = [];
+  for (const [name, run] of parts) {
+    try {
+      lines.push(`✅ **${name}:** ${await run()}`);
+    } catch (err) {
+      if (!(err instanceof Refused)) console.error(`/setup full (${name}):`, err);
+      lines.push(`⚠️ **${name}:** ${err instanceof Refused ? err.message : 'something went wrong; try its own /setup command.'}`);
+    }
+  }
+  const allGood = lines.every((l) => l.startsWith('✅'));
+  await interaction.editReply(notice(lines.join('\n'), { tone: allGood ? 'success' : 'warn', title: allGood ? 'Everything is set up' : 'Set up, with some gaps' }));
+}
+
+const RUN = { full, tickets: ticketsForm, serverstats: statsForm, logs, tempvoice: tempVoice, 'remove-tempvoice': removeTempVoiceCommand };
+
+/** Replies with a refusal, whether or not the interaction was already deferred. */
+async function report(interaction, err, what) {
+  if (!(err instanceof Refused)) console.error(`/setup ${what}:`, err);
+  const payload = ephemeral(err instanceof Refused ? err.message : 'Something went wrong setting that up.');
+  if (interaction.deferred || interaction.replied) await interaction.editReply(payload).catch(() => {});
+  else await interaction.reply(payload).catch(() => {});
+}
 
 export default {
   data: new SlashCommandBuilder()
     .setName('setup')
-    .setDescription('Admins: set up tickets, the log channel and temporary voice channels')
+    .setDescription('Admins: set up the bot\'s features')
+    .addSubcommand((s) => s.setName('full').setDescription('Set up everything at its defaults: log channel, tickets, temporary voice and server stats'))
     .addSubcommand((s) =>
       s
         .setName('tickets')
-        .setDescription('Choose the ticket channel and staff role, and post the "Open a ticket" button')
-        .addChannelOption((o) =>
-          o.setName('channel').setDescription('Channel for the "Open a ticket" button').setRequired(true).addChannelTypes(ChannelType.GuildText),
-        )
-        .addRoleOption((o) => o.setName('staff_role').setDescription('Role that can see and claim tickets').setRequired(true))
+        .setDescription('Make the Support Tickets section and its ticket dropdown (asks for the ticket types)')
+        .addRoleOption((o) => o.setName('staff_role').setDescription('Role that can see and claim tickets (admins only if left out)'))
         .addChannelOption((o) =>
           o
             .setName('queue_channel')
             .setDescription('Optional staff-only channel listing new tickets (otherwise staff claim inside each ticket)')
             .addChannelTypes(ChannelType.GuildText),
         )
-        .addChannelOption((o) =>
-          o.setName('category').setDescription('Category for open tickets (made for you if left out)').addChannelTypes(ChannelType.GuildCategory),
-        )
-        .addChannelOption((o) =>
-          o.setName('archive_category').setDescription('Category for closed tickets (made for you if left out)').addChannelTypes(ChannelType.GuildCategory),
-        )
         .addBooleanOption((o) => o.setName('ping_staff').setDescription('Ping the staff role for each new ticket')),
     )
+    .addSubcommand((s) => s.setName('serverstats').setDescription('Show member counts as locked voice channels (asks which stats to show)'))
     .addSubcommand((s) =>
       s
         .setName('logs')
         .setDescription('Set the channel where moderation, bot actions and server events are logged (empty = off)')
         .addChannelOption((o) => o.setName('channel').setDescription('Log channel').addChannelTypes(ChannelType.GuildText)),
     )
-    .addSubcommand((s) => s.setName('temp-voice').setDescription('Create the Temp Voice Channels category and its "Join To Create" channel'))
-    .addSubcommand((s) => s.setName('remove-temp-voice').setDescription('Remove the join channel; temporary channels in use disappear when they empty'))
+    .addSubcommand((s) => s.setName('tempvoice').setDescription('Create the Temp Voice Channels category and its "Join To Create" channel'))
+    .addSubcommand((s) => s.setName('remove-tempvoice').setDescription('Remove the join channel; temporary channels in use disappear when they empty'))
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setContexts(InteractionContextType.Guild),
 
   async execute(interaction) {
-    return RUN[interaction.options.getSubcommand()](interaction);
+    const sub = interaction.options.getSubcommand();
+    try {
+      await RUN[sub](interaction);
+    } catch (err) {
+      await report(interaction, err, sub);
+    }
   },
 
-  // The controls inside each temporary voice channel ("setup:tempvoice:<action>:<channel>").
+  // The ticket and server stats forms, and the controls inside each temporary voice channel ("setup:tempvoice:<action>:<channel>").
+  async handleModal(interaction) {
+    const part = interaction.customId.split(':')[1];
+    if (part === 'tempvoice') return handleTempVoice(interaction);
+    try {
+      await (part === 'tickets' ? ticketsSubmit : statsSubmit)(interaction);
+    } catch (err) {
+      await report(interaction, err, part);
+    }
+  },
   handleButton: handleTempVoice,
-  handleModal: handleTempVoice,
   handleSelect: handleTempVoice,
 };

@@ -1,7 +1,7 @@
 import { ChannelType, Events, OverwriteType, PermissionFlagsBits } from 'discord.js';
 import { guildConfig } from '../utils/store.js';
 
-const CATEGORY_NAME = 'Server Statistics';
+const CATEGORY_NAME = '📊 Server Stats 📈';
 export const MAX_STATS = 10;
 export const MAX_NAME = 80;
 
@@ -13,20 +13,20 @@ const humans = (guild) => guild.members.cache.filter((m) => !m.user.bot);
 
 /** What a stat channel can count. Listed in this order in the control panel. */
 export const STAT_TYPES = {
-  members: { label: 'All members', name: 'Members: {count}', count: (guild) => guild.memberCount },
-  humans: { label: 'Members without bots', name: 'Humans: {count}', count: (guild) => humans(guild).size },
-  bots: { label: 'Bots', name: 'Bots: {count}', count: (guild) => guild.members.cache.filter((m) => m.user.bot).size },
-  role: { label: 'Members with a role', name: '{role}: {count}', role: true, count: (guild, roleId) => guild.roles.cache.get(roleId)?.members.size ?? 0 },
+  members: { label: 'All members', name: '👥 Members: {count}', count: (guild) => guild.memberCount },
+  humans: { label: 'Members without bots', name: '🧑 Humans: {count}', count: (guild) => humans(guild).size },
+  bots: { label: 'Bots', name: '🤖 Bots: {count}', count: (guild) => guild.members.cache.filter((m) => m.user.bot).size },
+  role: { label: 'Members with a role', name: '🏷️ {role}: {count}', role: true, count: (guild, roleId) => guild.roles.cache.get(roleId)?.members.size ?? 0 },
   online: {
     label: 'Members online',
-    name: 'Online: {count}',
+    name: '🟢 Online: {count}',
     available: () => process.env.ENABLE_GAME_TRACKING === 'true', // the only feature that requests presence
     count: (guild) => guild.presences.cache.filter((p) => p.status !== 'offline' && !p.member?.user.bot).size,
   },
-  voice: { label: 'Members in voice', name: 'In voice: {count}', count: (guild) => guild.voiceStates.cache.filter((v) => v.channelId && !v.member?.user.bot).size },
-  boosts: { label: 'Server boosts', name: 'Boosts: {count}', count: (guild) => guild.premiumSubscriptionCount ?? 0 },
-  channels: { label: 'Channels', name: 'Channels: {count}', count: (guild) => guild.channels.cache.filter((c) => !c.isThread() && c.type !== ChannelType.GuildCategory).size },
-  roles: { label: 'Roles', name: 'Roles: {count}', count: (guild) => guild.roles.cache.size - 1 }, // not @everyone
+  voice: { label: 'Members in voice', name: '🔊 In voice: {count}', count: (guild) => guild.voiceStates.cache.filter((v) => v.channelId && !v.member?.user.bot).size },
+  boosts: { label: 'Server boosts', name: '🚀 Boosts: {count}', count: (guild) => guild.premiumSubscriptionCount ?? 0 },
+  channels: { label: 'Channels', name: '💬 Channels: {count}', count: (guild) => guild.channels.cache.filter((c) => !c.isThread() && c.type !== ChannelType.GuildCategory).size },
+  roles: { label: 'Roles', name: '🎭 Roles: {count}', count: (guild) => guild.roles.cache.size - 1 }, // not @everyone
 };
 
 const typeOffered = ([, t]) => t.available?.() ?? true;
@@ -59,6 +59,25 @@ export function statSettings(guild) {
       .filter(typeOffered)
       .map(([type, t]) => ({ type, label: t.label, name: t.name, role: Boolean(t.role) })),
   };
+}
+
+/** Members and bots, unless a server picks otherwise. */
+export const DEFAULT_STATS = ['members', 'bots'];
+
+/**
+ * Adds stats to a server's channels, keeping the ones it has: `types` are kinds like 'members', `roleIds`
+ * roles to count. Anything already shown isn't added twice. Returns what saveStatChannels does, plus what was skipped.
+ */
+export async function addStats(guild, { types = [], roleIds = [] }) {
+  const current = configOf(guild.id).stats;
+  const has = (type, roleId = null) => current.some((s) => s.type === type && (s.roleId ?? null) === roleId);
+  const wanted = [
+    ...types.filter((t) => statTypeOffered(t) && !STAT_TYPES[t].role && !has(t)).map((type) => ({ type, roleId: null, name: STAT_TYPES[type].name })),
+    ...roleIds.filter((id) => guild.roles.cache.has(id) && !has('role', id)).map((roleId) => ({ type: 'role', roleId, name: STAT_TYPES.role.name })),
+  ];
+  const room = MAX_STATS - current.length;
+  const result = await saveStatChannels(guild, [...current, ...wanted.slice(0, Math.max(0, room))]);
+  return { ...result, skipped: Math.max(0, wanted.length - room) };
 }
 
 const saving = new Set(); // guilds whose channels are being changed; the regular check waits for them

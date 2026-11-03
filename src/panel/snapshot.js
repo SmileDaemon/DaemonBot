@@ -219,6 +219,7 @@ export function guildSnapshot(guild) {
       list: ticketList.slice(0, 100).map((t) => ({
         number: t.number,
         subject: t.subject,
+        type: t.type ?? null,
         status: t.status,
         opener: t.openerName ?? userName(guild, t.openerId),
         claimer: t.claimerId ? userName(guild, t.claimerId) : null,

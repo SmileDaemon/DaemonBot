@@ -401,7 +401,7 @@ function statChannelsCard(guild) {
   const { stats, types } = guild.settings.statChannels;
   return `<form class="card" id="stat-channels">
     <h2>Stat channels</h2>
-    <p class="muted small">Public counts, shown as locked voice channels in a "Server Statistics" category. Discord lets a channel be renamed twice every 10 minutes, so a count can take up to 5 minutes to change. In a name, <code>{count}</code> is the number and <code>{role}</code> the role's name.</p>
+    <p class="muted small">Public counts, shown as locked voice channels in a "📊 Server Stats 📈" category. Discord lets a channel be renamed twice every 10 minutes, so a count can take up to 5 minutes to change. In a name, <code>{count}</code> is the number and <code>{role}</code> the role's name.</p>
     <div id="stat-rows">${stats.map((s) => statRow(guild, s)).join('')}</div>
     <div class="row" style="margin-bottom:14px">
       <select id="stat-type" aria-label="Stat to add">${types.map((t) => option(t.type, t.label)).join('')}</select>
@@ -484,7 +484,7 @@ export async function settings(main, ctx) {
         <h2>Tickets</h2>
         ${t
           ? `<p class="muted small">"Open a ticket" button: ${esc(channelName(guild, t.channelId))}. Each ticket gets its own private channel. To move the button or the ticket categories, run <code>/setup tickets</code> in Discord.</p>
-            <label class="field"><span>Staff role</span><select name="staffRoleId">${guild.roles.map((r) => option(r.id, `@${r.name}`, r.id === t.staffRoleId)).join('')}</select></label>
+            <label class="field"><span>Staff role</span><select name="staffRoleId">${option('', 'None: admins only', !t.staffRoleId)}${guild.roles.map((r) => option(r.id, `@${r.name}`, r.id === t.staffRoleId)).join('')}</select></label>
             <label class="field"><span>Queue channel</span><select name="queueChannelId">${channelOptions(guild, t.queueChannelId, 'None: claim inside each ticket')}</select>
               <span class="muted small">Lists new tickets with their details, so pick a channel only staff can see.</span></label>
             <label class="switch"><input type="checkbox" name="pingStaff"${t.pingStaff ? ' checked' : ''}> Ping the staff role for new tickets</label>
@@ -517,7 +517,7 @@ export async function settings(main, ctx) {
     e.preventDefault();
     const f = e.target.elements;
     const payload = {};
-    if (f.staffRoleId.value !== t.staffRoleId) payload.staffRoleId = f.staffRoleId.value;
+    if ((f.staffRoleId.value || null) !== (t.staffRoleId ?? null)) payload.staffRoleId = f.staffRoleId.value || null;
     if ((f.queueChannelId.value || null) !== (t.queueChannelId ?? null)) payload.queueChannelId = f.queueChannelId.value || null;
     if (f.pingStaff.checked !== Boolean(t.pingStaff)) payload.pingStaff = f.pingStaff.checked;
     if (!Object.keys(payload).length) return toast('Nothing changed.');
@@ -566,7 +566,7 @@ export async function moderation(main, ctx) {
           ? `<div class="row" style="margin-bottom:12px">${tabs}</div>
             ${tickets.length
               ? `<div class="table-wrap"><table><thead><tr><th>#</th><th>Subject</th><th>Status</th><th>Opened by</th><th>Claimed by</th><th>Opened</th><th>Closed</th></tr></thead><tbody>${tickets
-                  .map((t) => `<tr><td>${String(t.number).padStart(4, '0')}</td><td>${esc(t.subject)}</td><td><span class="tag ${esc(t.status)}">${esc(t.status.toUpperCase())}</span></td>
+                  .map((t) => `<tr><td>${String(t.number).padStart(4, '0')}</td><td>${t.type ? `<span class="muted small">${esc(t.type)}</span><br>` : ''}${esc(t.subject)}</td><td><span class="tag ${esc(t.status)}">${esc(t.status.toUpperCase())}</span></td>
                     <td>${esc(t.opener)}</td><td>${esc(t.claimer ?? '—')}</td><td title="${esc(dateTime(t.createdAt))}">${esc(ago(t.createdAt))}</td><td>${t.closedAt ? esc(ago(t.closedAt)) : '—'}</td></tr>`)
                   .join('')}</tbody></table></div>
                 <p class="muted small">Tickets are handled in their Discord channels; this list is read-only.</p>`
