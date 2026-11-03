@@ -310,7 +310,7 @@ async function botStatus(env) {
 
 async function me(env, session) {
   const { results } = await env.DB.prepare('SELECT id, name, icon, member_count, updated_at FROM guilds ORDER BY name').all();
-  const allowed = await statsAccessFor(env, session);
+  const allowed = await statsAccessFor(env);
   const guilds = results
     .filter((g) => session.isOwner || session.guildIds.includes(g.id))
     .map((g) => ({ id: g.id, name: g.name, icon: g.icon, memberCount: g.member_count, statsAccess: allowed(g.id) }));
@@ -325,7 +325,7 @@ async function getGuild(env, session, guildId) {
   const row = await env.DB.prepare('SELECT * FROM guilds WHERE id = ?').bind(guildId).first();
   if (!row) throw new HttpError(404, "The bot hasn't reported this server yet.");
   const snapshot = JSON.parse(row.snapshot);
-  const statsAccess = (await statsAccessFor(env, session))(guildId);
+  const statsAccess = (await statsAccessFor(env))(guildId);
   if (!statsAccess) hideStats(snapshot);
   return json({
     ...snapshot,
@@ -380,7 +380,7 @@ async function search(env, session, url) {
   const { results } = await env.DB.prepare('SELECT id, name, icon, snapshot FROM guilds ORDER BY name').all();
   const guilds = results.filter((g) => session.isOwner || session.guildIds.includes(g.id));
   const ids = JSON.stringify(guilds.map((g) => g.id));
-  const statsAllowed = await statsAccessFor(env, session);
+  const statsAllowed = await statsAccessFor(env);
 
   const like = `%${q.replace(/[%_\\]/g, (c) => `\\${c}`)}%`;
   const { results: logRows } = await env.DB.prepare(
@@ -458,7 +458,7 @@ const hasMatches = (c) => c.groups.length + c.pairs.length + c.members.length > 
 
 /** Searches one server's connections. requireGuild has already checked the viewer may see this server. */
 async function getConnections(env, session, guildId, url) {
-  if (!(await statsAccessFor(env, session))(guildId)) throw new HttpError(403, NO_STATS_ACCESS);
+  if (!(await statsAccessFor(env))(guildId)) throw new HttpError(403, NO_STATS_ACCESS);
   const q = searchTerm(url);
   const row = await env.DB.prepare('SELECT snapshot FROM guilds WHERE id = ?').bind(guildId).first();
   if (!row) throw new HttpError(404, "The bot hasn't reported this server yet.");
@@ -476,9 +476,8 @@ function hideStats(snapshot) {
   for (const key of ['activity', 'voice', 'games', 'gameMembers', 'connections']) delete snapshot[key];
 }
 
-/** Which servers' activity and connections this viewer may see: owners every one, admins only those the owner allowed. */
-async function statsAccessFor(env, session) {
-  if (session.isOwner) return () => true;
+/** Which servers' activity and connections anyone may see, the owner included: only those allowed in the Owner Panel. */
+async function statsAccessFor(env) {
   const { results } = await env.DB.prepare('SELECT guild_id FROM connection_access').all();
   const allowed = new Set(results.map((r) => r.guild_id));
   return (guildId) => allowed.has(guildId);
@@ -502,15 +501,17 @@ async function setStatsAccess(request, env, session) {
   return json({ guildId, allowed: Boolean(body.allowed), message: `${guild.name}'s admins ${body.allowed ? 'can now' : 'can no longer'} see its activity and connection data.` });
 }
 
-/** Searches the connections of every server the bot is in. Owners only. */
+/** Searches the connections of every server allowed in the Owner Panel. Owners only. */
 async function ownerConnections(env, session, url) {
   requireOwner(session);
   const q = searchTerm(url);
+  const allowed = await statsAccessFor(env);
   const { results } = await env.DB.prepare('SELECT id, name, icon, snapshot FROM guilds ORDER BY name').all();
-  const servers = results
+  const searchable = results.filter((g) => allowed(g.id));
+  const servers = searchable
     .map((g) => ({ guild: { id: g.id, name: g.name, icon: g.icon }, ...filterConnections(JSON.parse(g.snapshot).connections, q) }))
     .filter(hasMatches);
-  return json({ query: q, searched: results.length, servers });
+  return json({ query: q, searched: searchable.length, servers });
 }
 
 /** Every server the bot is in, with how much of each kind of data is kept for it. Owners only. */
