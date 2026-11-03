@@ -10,10 +10,14 @@
     "deploy": "node src/deploy-commands.js",
     "check": "node --check src/index.js",
     "sweep": "node scripts/sweep.js",
+    "housekeeping": "node scripts/housekeeping.js",
     "lavalink": "cd lavalink && java -jar Lavalink.jar",
     "panel": "node scripts/serve-panel.js",
     "legal": "node scripts/build-legal.js",
-    "panel:api": "npm --prefix worker run dev"
+    "panel:api": "npm --prefix worker run dev",
+    "postsweep": "node scripts/housekeeping.js",
+    "postdeploy": "node scripts/housekeeping.js",
+    "postlegal": "node scripts/housekeeping.js"
   },
   "engines": {
     "node": ">=20.11"

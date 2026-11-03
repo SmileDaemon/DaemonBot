@@ -102,6 +102,29 @@ It needs only Node and never contacts Discord. It prints OK or FAIL for each che
 
 Run it after any change, and especially after hand-editing a word list or `.env`. **To add a rule**, write a `check(name, bad)` in the right section of the script. Give it a name that says what should be true, and pass a list of what isn't.
 
+### What the project no longer needs
+
+The sweep asks whether anything is broken. `scripts/housekeeping.js` asks what is dead, stale or out of step, the way the housekeeping in the other projects does:
+
+```bash
+npm run housekeeping
+```
+
+It runs by itself after a successful `npm run sweep`, `npm run deploy` and `npm run legal`. It never fails a run: everything it lists is a candidate to review, not a verdict. It reports:
+
+- **code** (never changed): top-level functions and constants nothing uses, imports a file never reads, function bodies written twice, packages nothing imports or that aren't installed, and panel styles no page uses.
+- **files:** the worker's `wrangler dev` bundles, Lavalink's logs and jar while music is shelved, data files no store reads, and a saved word list identical to the repo's (while it exists, edits to `filter-words.txt` do nothing).
+- **the bot's data**, against what [PRIVACY.md](PRIVACY.md) promises: opted-out members still counted anywhere, daily message counts older than 30 days, tickets open for 30+ days. The live data is on the VM, so run it there too (`cd DaemonBot && npm run housekeeping`); it says when `data/` on this PC is an old copy.
+- **configuration:** the worker the bot syncs with vs. the one the site uses, the application ID in `.env` vs. `worker/wrangler.toml`, the Pages address vs. the git remote, `DEV_GUILD_ID` left set, settings in `.env` nothing reads, worker migrations out of sequence, placeholders left in the legal pages, and branches or stashes already done with.
+
+To delete the leftover files:
+
+```bash
+npm run housekeeping -- --clean
+```
+
+Add `--all` to also delete the set-aside items (`Lavalink.jar`, the panel's local test database, orphaned data files). Nothing a running Lavalink or `wrangler dev` has open is touched, and code, settings and data records are never changed. When a new kind of leftover or drift turns up, add a check for it to the script; when a check keeps reporting something that's fine, tune it rather than living with it.
+
 ## Control panel
 
 The panel is a website for managing the bot from any browser, including your phone. It has three parts:
