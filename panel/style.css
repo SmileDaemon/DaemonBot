@@ -121,6 +121,13 @@ button.primary::before, button.primary::after, .button.primary::before, .button.
 button.primary:hover, .button.primary:hover { background: var(--bright); }
 button.danger { color: var(--bad); border-color: var(--bad); }
 button.danger:hover { background: var(--bad); color: var(--bg); }
+button.danger:disabled { opacity: .45; cursor: not-allowed; background: transparent; color: var(--bad); }
+/* Long option text mustn't widen the page; small boxes (rows set) skip the word list's tall minimum. */
+label.field select { max-width: 100%; min-width: 0; }
+textarea[rows] { min-height: 0; }
+.danger-zone { border-color: var(--bad); box-shadow: 0 0 10px rgb(255 79 79 / 15%); }
+.danger-zone h2, .danger-zone h2::before { color: var(--bad); text-shadow: none; }
+.danger-zone ul { margin: 0 0 14px; padding-left: 1.3rem; }
 button:disabled, button:disabled:hover { opacity: .45; cursor: progress; background: transparent; color: var(--text); }
 button.small { padding: 1px 7px; font-size: .8rem; }
 select, input[type=text], input[type=search], textarea {

@@ -454,6 +454,63 @@ function tempVoiceCard(guild) {
   return `<div class="card" id="temp-voice"><h2>Temporary voice channels</h2>${body}</div>`;
 }
 
+// Form pieces shared by Settings and the Setup tab's Full Setup. Field names are unique within each form.
+
+function ticketFields(guild, t) {
+  const types = t?.types?.length ? t.types : ['Report A Problem'];
+  return `<label class="field"><span>Ticket types</span><textarea name="types" rows="4" spellcheck="false">${esc(types.join('\n'))}</textarea>
+      <span class="muted small">One per line, up to 25. Members pick one from the dropdown when they open a ticket.</span></label>
+    <label class="field"><span>Staff role</span><select name="staffRoleId">${option('', 'None: admins only', !t?.staffRoleId)}${guild.roles.map((r) => option(r.id, `@${r.name}`, r.id === t?.staffRoleId)).join('')}</select></label>
+    <label class="field"><span>Queue channel</span><select name="queueChannelId">${channelOptions(guild, t?.queueChannelId, 'None: claim inside each ticket')}</select>
+      <span class="muted small">Lists new tickets with their details, so pick a channel only staff can see.</span></label>
+    <label class="switch"><input type="checkbox" name="pingStaff"${t?.pingStaff ? ' checked' : ''}> Ping the staff role for new tickets</label>`;
+}
+
+const readTicketFields = (f) => ({
+  types: f.types.value.split('\n').map((line) => line.trim()).filter(Boolean),
+  staffRoleId: f.staffRoleId.value || null,
+  queueChannelId: f.queueChannelId.value || null,
+  pingStaff: f.pingStaff.checked,
+});
+
+const XP_FIELDS = [
+  ['messageMin', 'Least XP per message', 1000],
+  ['messageMax', 'Most XP per message', 1000],
+  ['cooldownSeconds', 'Seconds between messages that earn XP', 3600],
+  ['voicePerMinute', 'XP per minute in voice with others', 1000],
+];
+
+function levelFields(guild, lc) {
+  const channels = guild.channels.map((c) => option(c.id, `#${c.name}`, c.id === lc.announce)).join('');
+  return `<label class="field"><span>Level-up messages</span><select name="announce">
+        ${option('here', 'Where they levelled up', lc.announce === 'here')}${option('off', 'Off', lc.announce === 'off')}<optgroup label="In one channel">${channels}</optgroup></select></label>
+    <label class="field"><span>Level-up message</span><textarea name="message" rows="2" maxlength="1000" placeholder="${esc(lc.defaultMessage)}">${esc(lc.message ?? '')}</textarea>
+      <span class="muted small">Blank uses the default. <code>{user}</code> mentions them, <code>{name}</code> is their name, <code>{level}</code> the new level, <code>{server}</code> the server, <code>{roles}</code> any reward roles.</span></label>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px">${XP_FIELDS.map(([key, label, max]) =>
+      `<label class="field" style="margin:0"><span>${label}</span><input type="number" name="${key}" min="0" max="${max}" step="1" value="${esc(lc.xp[key])}" placeholder="${esc(lc.xpDefaults[key])}"></label>`).join('')}</div>`;
+}
+
+const readLevelFields = (f) => ({
+  announce: f.announce.value,
+  message: f.message.value,
+  xp: Object.fromEntries(XP_FIELDS.map(([key]) => [key, Number(f[key].value)])),
+});
+
+function levelsCard(guild) {
+  if (!guild.features.levels) return '<div class="card"><h2>Levels</h2><p class="muted">Turned off in the bot\'s .env.</p></div>';
+  const lc = guild.settings.levelConfig;
+  const rewards = Object.entries(lc.rewards ?? {}).sort((a, b) => a[0] - b[0]);
+  const role = (id) => guild.roles.find((r) => r.id === id);
+  return `<form class="card" id="levels">
+      <h2>Levels</h2>
+      <p class="muted small">Members earn XP from messages and time in voice with others. Turn levels on or off under General.</p>
+      ${levelFields(guild, lc)}
+      <p class="small" style="margin:14px 0"><b>Reward roles:</b> ${rewards.length ? rewards.map(([level, id]) => `level ${esc(level)} → ${esc(role(id) ? `@${role(id).name}` : 'a deleted role')}`).join(' · ') : 'none'}.
+        <span class="muted">Add or remove them with <code>/levels reward</code> in Discord, which also gives the role to members already past that level.</span></p>
+      <button class="primary" type="submit">Save</button>
+    </form>`;
+}
+
 export async function settings(main, ctx) {
   const { guildId } = ctx;
   main.innerHTML = loading;
@@ -482,15 +539,13 @@ export async function settings(main, ctx) {
       </form>
       <form class="card" id="tickets">
         <h2>Tickets</h2>
-        ${t
-          ? `<p class="muted small">"Open a ticket" button: ${esc(channelName(guild, t.channelId))}. Each ticket gets its own private channel. To move the button or the ticket categories, run <code>/setup tickets</code> in Discord.</p>
-            <label class="field"><span>Staff role</span><select name="staffRoleId">${option('', 'None: admins only', !t.staffRoleId)}${guild.roles.map((r) => option(r.id, `@${r.name}`, r.id === t.staffRoleId)).join('')}</select></label>
-            <label class="field"><span>Queue channel</span><select name="queueChannelId">${channelOptions(guild, t.queueChannelId, 'None: claim inside each ticket')}</select>
-              <span class="muted small">Lists new tickets with their details, so pick a channel only staff can see.</span></label>
-            <label class="switch"><input type="checkbox" name="pingStaff"${t.pingStaff ? ' checked' : ''}> Ping the staff role for new tickets</label>
-            <button class="primary" type="submit">Save</button>`
-          : '<p class="muted">Tickets aren\'t set up here yet. Run <code>/setup tickets</code> in Discord to choose the ticket channel; then the rest can be changed here.</p>'}
+        <p class="muted small">${t
+          ? `Members open tickets from the dropdown in ${esc(channelName(guild, t.channelId))}. Each ticket gets its own private channel.`
+          : 'Makes a <b>Support Tickets</b> category with a <b>Create A Ticket</b> channel, where members pick a ticket type from a dropdown. Each ticket gets its own private channel.'}</p>
+        ${ticketFields(guild, t)}
+        <button class="primary" type="submit">${t ? 'Save' : 'Create the ticket section'}</button>
       </form>
+      ${levelsCard(guild)}
       ${tempVoiceCard(guild)}
     </div>`;
 
@@ -515,15 +570,130 @@ export async function settings(main, ctx) {
 
   main.querySelector('#tickets').addEventListener('submit', (e) => {
     e.preventDefault();
-    const f = e.target.elements;
-    const payload = {};
-    if ((f.staffRoleId.value || null) !== (t.staffRoleId ?? null)) payload.staffRoleId = f.staffRoleId.value || null;
-    if ((f.queueChannelId.value || null) !== (t.queueChannelId ?? null)) payload.queueChannelId = f.queueChannelId.value || null;
-    if (f.pingStaff.checked !== Boolean(t.pingStaff)) payload.pingStaff = f.pingStaff.checked;
-    if (!Object.keys(payload).length) return toast('Nothing changed.');
-    act(e.submitter, guildId, 'tickets.update', payload, () => settings(main, ctx));
+    const payload = readTicketFields(e.target.elements);
+    const saved = t && { types: t.types?.length ? t.types : ['Report A Problem'], staffRoleId: t.staffRoleId ?? null, queueChannelId: t.queueChannelId ?? null, pingStaff: Boolean(t.pingStaff) };
+    if (saved && JSON.stringify(saved) === JSON.stringify(payload)) return toast('Nothing changed.');
+    act(e.submitter, guildId, 'tickets.setup', payload, () => settings(main, ctx));
   });
 
+  main.querySelector('#levels')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    act(e.submitter, guildId, 'levels.update', readLevelFields(e.target.elements), () => settings(main, ctx));
+  });
+
+}
+
+// ---------------------------------------------------------------------------
+//   Setup: Full Setup (once per server, like /setup full) and the Danger Zone
+// ---------------------------------------------------------------------------
+
+function dangerZone(guild) {
+  const open = (guild.tickets?.counts?.pending ?? 0) + (guild.tickets?.counts?.active ?? 0);
+  return `<div class="card danger-zone" id="danger">
+    <h2>Danger Zone</h2>
+    <p><b>Full Reset</b> undoes the full setup so it can be run again, here or with <code>/setup full</code>:</p>
+    <ul class="small">
+      <li>Deletes the server stats channels and their category.</li>
+      <li>Deletes the temporary voice join channel. Channels in use disappear when they empty.</li>
+      <li>Deletes the "Create A Ticket" channel and clears the ticket settings${open ? `. <b>Skipped while tickets are open (${num(open)} now)</b>` : ''}. Ticket channels and the archive are kept.</li>
+      <li>Turns the log channel off. The channel and its messages are kept.</li>
+      <li>Puts the level settings, reward roles and word filter back to their defaults. Everyone keeps their XP.</li>
+      <li>Unlocks full setup.</li>
+    </ul>
+    <label class="field"><span>Type <b>${esc(guild.name)}</b> to confirm</span><input type="text" id="resetconfirm" autocomplete="off" spellcheck="false"></label>
+    <button class="danger" id="fullreset" disabled>Full Reset</button>
+  </div>`;
+}
+
+function wireDangerZone(main, guild, rerender) {
+  const input = main.querySelector('#resetconfirm');
+  const button = main.querySelector('#fullreset');
+  input.addEventListener('input', () => {
+    input.dataset.dirty = '1';
+    button.disabled = input.value !== guild.name;
+  });
+  button.addEventListener('click', () => {
+    if (!confirm(`Full Reset ${guild.name}? This deletes the channels listed and can't be undone.`)) return;
+    act(button, guild.id, 'setup.reset', { confirm: input.value }, rerender);
+  });
+}
+
+function fullSetupForm(guild) {
+  const s = guild.settings;
+  const f = guild.features;
+  const off = (on) => (on ? '' : ' disabled');
+  const offNote = (on) => (on ? '' : ' <span class="muted small">(off in the bot\'s .env)</span>');
+  const statTypes = s.statChannels.types.filter((t) => !t.role);
+  return `<form id="fullsetup" class="stack">
+    <p class="muted small">Choose every part of this server's setup and run it in one go. Unlike <code>/setup full</code>, which uses the defaults, this lets you pick ticket types, which stats to show and more. Full setup runs <b>once per server</b>; after that it's locked until a Full Reset in the Danger Zone, and each part can still be changed on its own.</p>
+    <div class="grid">
+      <div class="card"><h2>Logs</h2>
+        <label class="field"><span>Log channel</span><select name="logMode">
+          ${option('auto', 'Make a staff-only #bot-logs (or keep the current one)', true)}${option('off', 'Off')}
+          <optgroup label="Use a channel">${guild.channels.map((c) => option(`ch:${c.id}`, `#${c.name}`)).join('')}</optgroup></select></label>
+        <label class="switch"><input type="checkbox" name="wordFilter"${s.wordFilter ? ' checked' : ''}${off(f.wordFilter)}> Word filter${offNote(f.wordFilter)}</label>
+      </div>
+      <div class="card"><h2>Tickets</h2>
+        <label class="switch"><input type="checkbox" name="ticketsOn" checked> Set up tickets</label>
+        ${ticketFields(guild, s.tickets)}
+      </div>
+      <div class="card"><h2>Server stats</h2>
+        <label class="switch"><input type="checkbox" name="statsOn"${f.statChannels ? ' checked' : ''}${off(f.statChannels)}> Show server stats${offNote(f.statChannels)}</label>
+        <p class="muted small">Locked voice channels everyone can see. Up to 10 in all; names can be changed later in the Server Stats tab.</p>
+        ${statTypes.map((t) => `<label class="switch"><input type="checkbox" name="statType" value="${esc(t.type)}"${['members', 'bots'].includes(t.type) ? ' checked' : ''}${off(f.statChannels)}> ${esc(t.label)}</label>`).join('')}
+        ${guild.roles.length ? `<label class="field"><span>Members with a role</span><select name="statRole" multiple size="${Math.min(6, guild.roles.length)}"${off(f.statChannels)}>${guild.roles.map((r) => option(r.id, `@${r.name}`)).join('')}</select>
+          <span class="muted small">Each role picked gets its own count. Ctrl-click (⌘ on a Mac) to pick several.</span></label>` : ''}
+      </div>
+      <div class="card"><h2>Temporary voice</h2>
+        <label class="switch"><input type="checkbox" name="tempVoice"${f.tempVoice ? ' checked' : ''}${off(f.tempVoice)}> Set up "Join To Create" voice channels${offNote(f.tempVoice)}</label>
+        <p class="muted small">Joining it gives a member their own voice channel, which disappears when everyone leaves.</p>
+      </div>
+      <div class="card"><h2>Levels</h2>
+        <label class="switch"><input type="checkbox" name="levelsOn"${s.levels !== false && f.levels ? ' checked' : ''}${off(f.levels)}> Levels on${offNote(f.levels)}</label>
+        ${f.levels ? levelFields(guild, s.levelConfig) : ''}
+      </div>
+    </div>
+    <div class="card row"><button class="primary" type="submit">Run full setup</button><span class="muted small">Takes a few seconds; the bot creates the channels one by one.</span></div>
+  </form>`;
+}
+
+function readFullSetup(form, guild) {
+  const f = form.elements;
+  const logMode = f.logMode.value;
+  const statsOn = f.statsOn.checked && !f.statsOn.disabled;
+  return {
+    log: logMode.startsWith('ch:') ? { mode: 'channel', channelId: logMode.slice(3) } : { mode: logMode },
+    wordFilter: f.wordFilter.checked,
+    tickets: f.ticketsOn.checked ? readTicketFields(f) : false,
+    tempVoice: f.tempVoice.checked && !f.tempVoice.disabled,
+    stats: statsOn ? { types: [...form.querySelectorAll('[name=statType]:checked')].map((i) => i.value), roleIds: [...(f.statRole?.selectedOptions ?? [])].map((o) => o.value) } : false,
+    levels: guild.features.levels ? { enabled: f.levelsOn.checked, ...readLevelFields(f) } : undefined,
+  };
+}
+
+export async function setup(main, ctx) {
+  const { guildId } = ctx;
+  main.innerHTML = loading;
+  const guild = await api(`/api/guilds/${guildId}`);
+  const done = guild.settings.fullSetup;
+  const rerender = () => setup(main, ctx);
+  main.innerHTML = `${offlineBanner(guild.bot)}<div class="stack">
+    ${done
+      ? `<div class="card"><h2>Full setup</h2>
+          <p>🔒 Full setup ran ${esc(dateTime(done.at))}${done.by ? ` by ${esc(done.by.username)}` : ''}, ${done.via === 'panel' ? 'from the control panel' : 'with <code>/setup full</code> in Discord'}. It's locked for this server, so it can't run again.</p>
+          <p class="muted small">Each part can still be changed: Settings and Server Stats here, or the <code>/setup</code> commands in Discord. To start over, use Full Reset below.</p></div>`
+      : fullSetupForm(guild)}
+    ${dangerZone(guild)}
+  </div>`;
+  wireDangerZone(main, guild, rerender);
+  main.querySelector('#fullsetup')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const payload = readFullSetup(e.target, guild);
+    const stats = payload.stats ? payload.stats.types.length + payload.stats.roleIds.length : 0;
+    if (stats > 10) return toast(`That's ${stats} stats; a server can have up to 10.`, true);
+    if (!confirm('Run full setup now? It creates the channels you picked, and can only run once in this server unless you do a Full Reset.')) return;
+    act(e.submitter, guildId, 'setup.full', payload, rerender);
+  });
 }
 
 // ---------------------------------------------------------------------------

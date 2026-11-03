@@ -12,6 +12,7 @@ const TABS = [
   ['connections', 'Connections'],
   ['serverstats', 'Server Stats'],
   ['settings', 'Settings'],
+  ['setup', 'Setup'],
   ['moderation', 'Moderation'],
   ['logs', 'Logs'],
   // ['music', 'Music'], // shelved with the bot's music commands; the page is still in views.js

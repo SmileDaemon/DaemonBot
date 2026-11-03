@@ -2,7 +2,8 @@ import { ChannelType } from 'discord.js';
 import { activityIn } from '../features/activityTracker.js';
 import { connectionsIn } from '../features/connectionTracker.js';
 import { gamesOf, liveMs } from '../features/gameTracker.js';
-import { levelSettings } from '../features/levels.js';
+import { fullSetupDone } from '../features/fullSetup.js';
+import { DEFAULT_LEVEL_MESSAGE, levelSettings, XP_DEFAULTS } from '../features/levels.js';
 import { statSettings } from '../features/statChannels.js';
 import { tempVoiceStatus } from '../features/tempVoice.js';
 import { allTickets } from '../features/tickets.js';
@@ -208,6 +209,8 @@ export function guildSnapshot(guild) {
       activityTracking: config.activityTracking !== false,
       connectionTracking: config.connectionTracking !== false,
       levels: levelSettings(guild.id).enabled,
+      levelConfig: (({ announce, message, xp, rewards }) => ({ announce, message, xp, rewards, defaultMessage: DEFAULT_LEVEL_MESSAGE, xpDefaults: XP_DEFAULTS }))(levelSettings(guild.id)),
+      fullSetup: fullSetupDone(guild.id),
       tickets: config.tickets ?? null,
       statChannels: statSettings(guild),
       tempVoice: tempVoiceStatus(guild),

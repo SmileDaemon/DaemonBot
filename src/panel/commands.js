@@ -1,21 +1,19 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { PermissionFlagsBits } from 'discord.js';
+import { fullReset, runFullSetup, setUpTickets } from '../features/fullSetup.js';
 import { endGuildSessions } from '../features/gameTracker.js';
 import { saveLevelSettings } from '../features/levels.js';
 import { optIn, optOut } from '../features/optOut.js';
 import { MAX_NAME, MAX_STATS, saveStatChannels, STAT_TYPES, statTypeOffered } from '../features/statChannels.js';
 import { BOT_NEEDS as TEMP_VOICE_NEEDS, removeTempVoice, setupTempVoice } from '../features/tempVoice.js';
-import { changeStaffRole } from '../features/tickets.js';
+import { changeStaffRole, parseTicketTypes } from '../features/tickets.js';
 import { endGuildVoice } from '../features/voiceTracker.js';
 import { parseWordList, SAVED_WORDS } from '../features/wordFilter.js';
 import { COLORS, logEvent } from '../utils/logging.js';
+import { refuse, Refused } from '../utils/refused.js';
 import { guildConfig, isOptedOut, warnings } from '../utils/store.js';
 
-class Refused extends Error {}
-const refuse = (message) => {
-  throw new Refused(message);
-};
 
 const LOOP_MODES = ['off', 'track', 'queue'];
 
@@ -43,6 +41,71 @@ function textChannel(guild, id) {
   const channel = guild.channels.cache.get(id);
   if (!channel?.isTextBased()) refuse("That channel doesn't exist anymore.");
   return channel;
+}
+
+/** The Discord account behind a panel change, for setup steps that log who made them. */
+async function panelAuthor(guild, user) {
+  const author = await guild.client.users.fetch(user.id).catch(() => null);
+  if (!author) refuse("I couldn't look up your Discord account. Try again in a moment.");
+  return author;
+}
+
+/** Mentions in a setup step's result, made readable for the panel. */
+const readable = (guild, text) =>
+  text
+    .replace(/<#(\d+)>/g, (m, id) => (guild.channels.cache.get(id) ? `#${guild.channels.cache.get(id).name}` : m))
+    .replace(/<@&(\d+)>/g, (m, id) => (guild.roles.cache.get(id) ? `@${guild.roles.cache.get(id).name}` : m))
+    .replaceAll('**', '');
+
+/** Ticket options from the panel, checked. */
+function ticketPlan(guild, t) {
+  const staffRoleId = t.staffRoleId || null;
+  if (staffRoleId && !guild.roles.cache.has(staffRoleId)) refuse("The staff role doesn't exist anymore.");
+  const queueChannelId = t.queueChannelId || null;
+  if (queueChannelId) textChannel(guild, queueChannelId);
+  if (!Array.isArray(t.types)) refuse('Ticket types are missing.');
+  return { staffRoleId, queueChannelId, pingStaff: Boolean(t.pingStaff && staffRoleId), types: parseTicketTypes(t.types.join('\n')) };
+}
+
+const XP_LIMITS = { messageMin: ['Least XP per message', 1000], messageMax: ['Most XP per message', 1000], cooldownSeconds: ['Cooldown', 3600], voicePerMinute: ['Voice XP per minute', 1000] };
+
+/** Level options from the panel, checked the way /levels checks them. Only what's given is changed. */
+function levelPlan(guild, l) {
+  const out = {};
+  if ('enabled' in l) out.enabled = Boolean(l.enabled);
+  if ('announce' in l) {
+    if (l.announce !== 'here' && l.announce !== 'off') {
+      const channel = textChannel(guild, l.announce);
+      if (!channel.permissionsFor(guild.members.me).has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages])) {
+        refuse(`I need View Channel and Send Messages in #${channel.name} for level-up messages.`);
+      }
+    }
+    out.announce = l.announce;
+  }
+  if ('message' in l) {
+    const text = String(l.message ?? '').trim();
+    if (text.length > 1000) refuse('The level-up message can be up to 1000 characters.');
+    out.message = text || null;
+  }
+  if ('xp' in l) {
+    const xp = {};
+    for (const [key, [label, max]] of Object.entries(XP_LIMITS)) {
+      const value = Number(l.xp?.[key]);
+      if (!Number.isInteger(value) || value < 0 || value > max) refuse(`${label} must be a whole number from 0 to ${max}.`);
+      xp[key] = value;
+    }
+    if (xp.messageMin > xp.messageMax) refuse("The least XP per message can't be more than the most.");
+    out.xp = xp;
+  }
+  return out;
+}
+
+/** Stats to add in a full setup, checked. */
+function statsPlan(guild, s) {
+  const types = (s.types ?? []).filter((t) => statTypeOffered(t) && !STAT_TYPES[t].role);
+  const roleIds = (s.roleIds ?? []).filter((id) => guild.roles.cache.has(id));
+  if (types.length + roleIds.length > MAX_STATS) refuse(`A server can have up to ${MAX_STATS} stat channels.`);
+  return { types, roleIds };
 }
 
 function player(client, guildId) {
@@ -159,6 +222,47 @@ const HANDLERS = {
     await logPanelChange(guild, user, 'Temporary voice channels set up', [{ name: 'Join channel', value: `${hub}`, inline: true }]);
     return fresh ? `Set up. Joining "${hub.name}" now makes a temporary voice channel.` : 'Already set up; anything missing was made again.';
   },
+  // Makes the ticket section, or updates it (ticket types included). /setup tickets does the same in Discord.
+  async 'tickets.setup'(guild, payload, user) {
+    const { channel } = await setUpTickets(guild, await panelAuthor(guild, user), ticketPlan(guild, payload));
+    return `Tickets saved. Members open them from the dropdown in #${channel.name}.`;
+  },
+
+  async 'levels.update'(guild, payload, user) {
+    if (process.env.ENABLE_LEVELS !== 'true') refuse("Levels are turned off in the bot's .env.");
+    const changes = levelPlan(guild, payload);
+    if (!Object.keys(changes).length) refuse('Nothing to change.');
+    saveLevelSettings(guild.id, changes);
+    await logPanelChange(guild, user, 'Level settings changed', Object.keys(changes).map((key) => ({ name: key, value: 'Changed', inline: true })));
+    return 'Level settings saved.';
+  },
+
+  // Every part at once, as chosen in the panel. Runs once per server; after that it's locked until setup.reset.
+  async 'setup.full'(guild, payload, user) {
+    const log = payload.log ?? { mode: 'auto' };
+    if (!['auto', 'channel', 'off'].includes(log.mode)) refuse('Pick what to do about the log channel.');
+    if (log.mode === 'channel') textChannel(guild, log.channelId);
+    const plan = {
+      log,
+      wordFilter: Boolean(payload.wordFilter),
+      tickets: payload.tickets ? ticketPlan(guild, payload.tickets) : false,
+      tempVoice: Boolean(payload.tempVoice),
+      stats: payload.stats ? statsPlan(guild, payload.stats) : false,
+      levels: payload.levels ? levelPlan(guild, payload.levels) : undefined,
+    };
+    const results = await runFullSetup(guild, await panelAuthor(guild, user), plan, 'panel');
+    const gaps = results.filter((r) => !r.ok).length;
+    return `Full setup ${gaps ? `done, with ${gaps} gap${gaps === 1 ? '' : 's'}` : 'done'}. ` +
+      results.map((r) => `${r.ok ? '✓' : '⚠'} ${r.name}: ${readable(guild, r.text)}`).join(' · ');
+  },
+
+  // Danger Zone: undoes a full setup and unlocks it. The panel asks for the server's name; checked again here.
+  async 'setup.reset'(guild, { confirm }, user) {
+    if (confirm !== guild.name) refuse("Type the server's name exactly to confirm a Full Reset.");
+    const results = await fullReset(guild, await panelAuthor(guild, user));
+    return `Full Reset done. ${results.map((r) => `${r.name}: ${r.text}`).join(' · ')}`;
+  },
+
   async 'tempvoice.remove'(guild, _payload, user) {
     const { left } = await removeTempVoice(guild);
     await logPanelChange(guild, user, 'Temporary voice channels removed');
