@@ -221,8 +221,9 @@ function checkCode() {
       if (!imported && !scripts.includes(name)) add('code', 'package nothing imports', `${pkgDir}/package.json`, name);
     }
     for (const name of [...Object.keys(pkg.dependencies ?? {}), ...Object.keys(pkg.devDependencies ?? {})]) {
-      // CI installs only what each job needs, so a missing package there means nothing.
-      if (!process.env.CI && !existsSync(join(ROOT, pkgDir, 'node_modules', name))) {
+      // CI installs only what each job needs, and the VM never installs the worker (no worker/node_modules
+      // at all), so a missing package means nothing there.
+      if (!process.env.CI && existsSync(join(ROOT, pkgDir, 'node_modules')) && !existsSync(join(ROOT, pkgDir, 'node_modules', name))) {
         add('config', 'package listed but not installed', `${pkgDir}/package.json`, `${name}: run npm install${pkgDir === '.' ? '' : ` in ${pkgDir}/`}`);
       }
     }
@@ -330,6 +331,8 @@ function checkData() {
       if (Object.values(voice[userId]?.channels ?? {}).some((c) => c.guildId === guildId)) left.push('voice');
       if (Object.values(voice).some((u) => Object.values(u.channels ?? {}).some((c) => c.guildId === guildId && c.with?.[userId]))) left.push('voice (others\' time with them)');
       if (Object.keys(connections[guildId] ?? {}).some((key) => key.split('-').includes(userId))) left.push('connections');
+      // Pairs quiet for 180 days are packed under _cold, still keyed by pair (src/features/connectionTracker.js).
+      if (Object.keys(connections[guildId]?._cold ?? {}).some((key) => key.split('-').includes(userId))) left.push('packed connections');
       if (left.length) add('data', 'opted-out member still counted', `server ${guildId}`, `user ${userId} in ${left.join(', ')}; src/features/optOut.js should have deleted it`);
     }
   }
@@ -383,7 +386,7 @@ function checkConfig() {
     if (clientId && tomlVar('DISCORD_CLIENT_ID') && clientId !== tomlVar('DISCORD_CLIENT_ID')) {
       add('config', 'two different application IDs', 'worker/wrangler.toml', `DISCORD_CLIENT_ID ${tomlVar('DISCORD_CLIENT_ID')} vs .env CLIENT_ID ${clientId}`);
     }
-    if (env.get('DEV_GUILD_ID')) add('config', 'commands go to one test server only', '.env DEV_GUILD_ID', 'clear it and npm run deploy to register them everywhere');
+    if (env.get('DEV_GUILD_ID')) add('config', 'npm run deploy from this copy registers commands to one test server only', '.env DEV_GUILD_ID', 'clear it here unless that is what you want');
     if (env.get('ENABLE_MUSIC') === 'true') add('config', 'music switched on while it is shelved', '.env ENABLE_MUSIC', 'its commands are not registered (MAINTAINING.md -> Music)');
     const extra = [...env.keys()].filter((k) => !example.has(k));
     if (extra.length) add('config', 'settings in .env nothing reads', '.env', extra.join(', '));
