@@ -8,7 +8,45 @@ import { isTempVoiceChannel } from './tempVoice.js';
 const KEEP = 10;
 export const BACKUP_EVERY_MS = 24 * 60 * 60_000;
 
-const listOf = (guildId) => backups.get(guildId, []);
+// Most days nothing changes, so only the newest backup is saved whole. Each older one is saved as how it
+// differs from the next newer one: the roles and channels that were different, and the ones it didn't have.
+const sameAs = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+/** `older` as its differences from `newer`. */
+function diff(older, newer) {
+  const changes = (kind) => {
+    const newerById = new Map(newer[kind].map((x) => [x.id, x]));
+    const olderIds = new Set(older[kind].map((x) => x.id));
+    return {
+      changed: older[kind].filter((x) => !sameAs(x, newerById.get(x.id))),
+      gone: newer[kind].filter((x) => !olderIds.has(x.id)).map((x) => x.id),
+    };
+  };
+  return { at: older.at, reason: older.reason, everyone: older.everyone, diff: { roles: changes('roles'), channels: changes('channels') } };
+}
+
+/** Rebuilds a backup saved by `diff` from the next newer one. */
+function undiff(saved, newer) {
+  const rebuild = (kind) => {
+    const { changed, gone } = saved.diff[kind];
+    const changedById = new Map(changed.map((x) => [x.id, x]));
+    const kept = newer[kind].filter((x) => !gone.includes(x.id)).map((x) => changedById.get(x.id) ?? x);
+    const keptIds = new Set(kept.map((x) => x.id));
+    return [...kept, ...changed.filter((x) => !keptIds.has(x.id))];
+  };
+  return { at: saved.at, reason: saved.reason, everyone: saved.everyone, roles: rebuild('roles'), channels: rebuild('channels') };
+}
+
+/** Every backup in full, newest first. Backups saved whole before differences were used still read as they are. */
+function listOf(guildId) {
+  const list = [];
+  for (const saved of backups.get(guildId, [])) list.push(saved.diff && list.length ? undiff(saved, list.at(-1)) : saved);
+  return list;
+}
+
+function save(guildId, list) {
+  backups.set(guildId, list.map((b, i) => (i ? diff(b, list[i - 1]) : b)));
+}
 
 /** A copy of the server's structure now. Temporary voice channels come and go, so they're left out. */
 function snapshot(guild, reason) {
@@ -36,11 +74,12 @@ function snapshot(guild, reason) {
 /** Saves a backup now, keeping the newest ten. `reason`: 'scheduled', 'raid', 'nuke' or 'manual'. */
 export function takeBackup(guild, reason) {
   const backup = snapshot(guild, reason);
-  backups.set(guild.id, [backup, ...listOf(guild.id)].slice(0, KEEP));
+  save(guild.id, [backup, ...listOf(guild.id)].slice(0, KEEP));
   return backup;
 }
 
-export const latestBackup = (guildId) => listOf(guildId)[0] ?? null;
+// The newest is always saved whole.
+export const latestBackup = (guildId) => backups.get(guildId, [])[0] ?? null;
 
 /** Roles and channels in the latest backup that the server no longer has. */
 function missing(guild, backup) {

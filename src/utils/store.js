@@ -23,7 +23,8 @@ function createStore(name) {
 
   function save() {
     mkdirSync(dataDir, { recursive: true });
-    writeFileSync(file, JSON.stringify(data, null, 2));
+    // No indentation: the files are about a third smaller. Open one in a JSON formatter to read it.
+    writeFileSync(file, JSON.stringify(data));
   }
 }
 
@@ -54,6 +55,8 @@ export const activityStats = createStore('activity');
 /**
  * Connections between members, keyed by guild ID: { ["lowerId-higherId"]: { replies, mentions, reactions,
  * chats, gameMs, games: { [game]: ms }, first, last } }. Voice time together comes from voiceStats.
+ * Pairs with no interaction for 180 days are packed, losslessly, into `_cold: { [pairKey]: [replies, mentions,
+ * reactions, chats, gameMs, first, last, games] }`, and unpacked when they interact again.
  */
 export const connectionStats = createStore('connections');
 
@@ -76,7 +79,10 @@ export const warnings = createStore('warnings');
 /** Raid protection's running state, keyed by guild ID: { lockdown, raid, incidents } */
 export const securityState = createStore('security');
 
-/** Backups of each server's channels and roles, newest first, keyed by guild ID: [{ at, reason, everyone, roles, channels }] */
+/**
+ * Backups of each server's channels and roles, newest first, keyed by guild ID: [{ at, reason, everyone, roles,
+ * channels }]. Only the newest is saved whole; each older one is saved as its differences from the one after it.
+ */
 export const backups = createStore('backups');
 
 /** Which bot update notes each server has had, and today's message: { seen, day, channelId, messageId, posted } */

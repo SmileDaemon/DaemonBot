@@ -15,6 +15,36 @@ const WEIGHTS = { replies: 3, mentions: 2, reactions: 1, chats: 1, per10Min: 1 }
 // Connections weaker than this are left out when working out groups, so one stray reply doesn't merge two.
 const MIN_GROUP_EDGE = 5;
 const MIN_GROUP_SIZE = 3;
+// Pairs with no interaction for this long are packed into a compact list form to save room. Nothing is
+// lost: they read exactly as before, and are unpacked as soon as the two interact again.
+const COLD_AFTER_MS = 180 * 86_400_000;
+const COLD_EVERY_MS = 24 * 60 * 60_000;
+const COLD = '_cold'; // beside a server's pairs: { [pairKey]: [replies, mentions, reactions, chats, gameMs, first, last, games] }
+const PACKED = ['replies', 'mentions', 'reactions', 'chats', 'gameMs', 'first', 'last'];
+const pack = (rec) => [...PACKED.map((k) => rec[k]), rec.games];
+const unpack = (row) => ({ ...Object.fromEntries(PACKED.map((k, i) => [k, row[i]])), games: row[PACKED.length] });
+
+/** All of a server's saved pairs, packed ones included, as { [pairKey]: record }. */
+function pairsOf(guildId) {
+  const { [COLD]: cold = {}, ...pairs } = connectionStats.get(guildId, {});
+  for (const [key, row] of Object.entries(cold)) pairs[key] = unpack(row);
+  return pairs;
+}
+
+/** Packs this server's pairs with no interaction for 180 days. Returns how many. */
+function packStalePairs(guildId, now = Date.now()) {
+  const data = connectionStats.get(guildId, {});
+  const unsaved = pending.get(guildId);
+  let count = 0;
+  for (const [key, rec] of Object.entries(data)) {
+    if (key === COLD || unsaved?.has(key) || (rec.last ?? 0) >= now - COLD_AFTER_MS) continue;
+    (data[COLD] ??= {})[key] = pack(rec);
+    delete data[key];
+    count += 1;
+  }
+  if (count) connectionStats.set(guildId, data);
+  return count;
+}
 
 // guildId -> Map(pairKey -> { replies, mentions, reactions, chats, gameMs, games: Map(game -> ms), at })
 const pending = new Map();
@@ -59,6 +89,11 @@ function flush() {
   for (const [guildId, pairs] of pending) {
     const data = connectionStats.get(guildId, {});
     for (const [key, p] of pairs) {
+      // A packed pair that's active again is unpacked.
+      if (data[COLD]?.[key]) {
+        data[key] = unpack(data[COLD][key]);
+        delete data[COLD][key];
+      }
       const rec = (data[key] ??= { replies: 0, mentions: 0, reactions: 0, chats: 0, gameMs: 0, games: {}, first: p.at, last: p.at });
       for (const kind of ['replies', 'mentions', 'reactions', 'chats', 'gameMs']) rec[kind] += p[kind];
       for (const [game, ms] of p.games) rec.games[game] = (rec.games[game] ?? 0) + ms;
@@ -179,7 +214,7 @@ const topGames = (games, limit = 5) =>
 export function connectionsIn(guild, nameOf) {
   if (!isTracking(guild.id)) return { pairs: [], members: [], groups: [] };
 
-  const stored = connectionStats.get(guild.id, {});
+  const stored = pairsOf(guild.id);
   const voice = voicePairs(guild);
   const empty = { replies: 0, mentions: 0, reactions: 0, chats: 0, gameMs: 0, games: {}, first: null, last: null };
   const unsaved = pending.get(guild.id) ?? new Map();
@@ -330,4 +365,10 @@ export function registerConnectionTracker(client) {
     flush();
   }, FLUSH_MS).unref();
   onShutdown(flush);
+
+  const packAll = () => {
+    for (const guildId of client.guilds.cache.keys()) packStalePairs(guildId);
+  };
+  client.once(Events.ClientReady, () => setTimeout(packAll, 5 * 60_000).unref());
+  setInterval(packAll, COLD_EVERY_MS).unref();
 }

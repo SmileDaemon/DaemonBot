@@ -141,7 +141,9 @@ The bot only makes outgoing requests to the worker, every 10 seconds, so nothing
 
 **Who can use it:** anyone who signs in with Discord can manage the servers where they have **Manage Server** or **Administrator**, and only those servers. People listed in `OWNER_IDS` can see every server the bot is in, plus the bot-wide word list. Each change made in the panel is posted in that server's log channel with the name of whoever made it.
 
-**What's stored in Cloudflare:** a copy of every log entry, including the text of deleted messages, kept for 90 days. Also daily counts (messages per channel, joins, commands and so on) for 400 days, and each server's latest snapshot (settings, warnings, tickets, tracker totals).
+**What's stored in Cloudflare:** a copy of every log entry, including the text of deleted messages, kept for 90 days. Also counts (messages per channel, joins, commands and so on): daily for 90 days, then rolled into weekly rows until 400 days, then monthly rows kept while the bot is in the server. Rolled-up rows keep each breakdown's top 25 keys and add the rest up as `(other)`; totals stay exact. The daily cleanup does the rolling (`rollUpStats` in `worker/src/index.js`). Plus each server's latest snapshot (settings, warnings, tickets, tracker totals).
+
+On the bot, nothing about a member is deleted unless they ask (an opt-out). To save room without losing anything, connection pairs with no activity for 180 days are packed into a compact form under `_cold`, and unpacked when they interact again. Backups after the newest are saved as differences. Data files are saved unindented, so open one in a JSON formatter to read it.
 
 ### Setting it up (once)
 

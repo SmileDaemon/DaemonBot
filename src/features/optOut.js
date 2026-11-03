@@ -51,8 +51,11 @@ export function optOut(guild, userId) {
   }
   const pairs = connectionStats.get(guild.id, {});
   const keys = Object.keys(pairs).filter((key) => key.split('-').includes(userId));
-  if (keys.length) {
+  // Pairs not active for a while are packed under _cold (see connectionTracker.js).
+  const packed = Object.keys(pairs._cold ?? {}).filter((key) => key.split('-').includes(userId));
+  if (keys.length || packed.length) {
     for (const key of keys) delete pairs[key];
+    for (const key of packed) delete pairs._cold[key];
     connectionStats.set(guild.id, pairs);
   }
 }

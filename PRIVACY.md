@@ -84,7 +84,6 @@ These providers may store and process data in the United States and in other cou
 | Server statistics | Daily for 90 days, then as weekly and monthly totals until the Bot leaves the Server |
 | Daily message counts | 30 days |
 | Usage statistics | Until deleted on request, or until the Server's administrators delete them |
-| Interactions between two members | 180 days after their last interaction, after which only each member's overall totals are kept |
 | Levels and XP | Until the Server's administrators reset them, or until the member opts out |
 | Warnings and tickets | Until deleted by the Server's administrators or on request |
 | Ticket transcripts | Up to 30 days |

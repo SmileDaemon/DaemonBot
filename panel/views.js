@@ -31,7 +31,7 @@ function channelOptions(guild, selected, none = 'Off') {
 
 const channelName = (guild, id) => {
   const c = guild.channels.find((ch) => ch.id === id);
-  return c ? `#${c.name}` : id ? 'a deleted channel' : 'none';
+  return c ? `#${c.name}` : id === '(other)' ? 'Other' : id ? 'a deleted channel' : 'none';
 };
 
 /** Runs a panel change with its button disabled, then calls `after`. */
@@ -78,14 +78,37 @@ function aggregate(rows) {
   return { byDay, byKey };
 }
 
-const seriesFor = (byDay, metric, days, fillGaps = false) => {
-  let last = null;
-  return days.map((d) => {
-    const v = byDay[metric]?.[d];
-    if (v != null) last = v;
-    return v ?? (fillGaps ? last : 0);
+/**
+ * The chart's bars, oldest first: { day, length }. The last ~90 days come as one row per day; older
+ * stats are rolled into weeks, then months, so each rolled row becomes one wider bar starting on its `day`.
+ * `trim` drops the empty days before the first row (for "All time").
+ */
+function buckets(rows, range, trim = false) {
+  const rolled = new Map();
+  for (const r of rows) if (r.grain && r.grain !== 'd') rolled.set(r.day, r.length);
+  const covered = new Set();
+  for (const [day, length] of rolled) {
+    for (let i = 0; i < length; i++) covered.add(new Date(Date.parse(day) + i * 86_400_000).toISOString().slice(0, 10));
+  }
+  const first = trim ? rows.reduce((min, r) => (r.day < min ? r.day : min), lastDays(30)[0]) : '';
+  const daily = lastDays(range).filter((day) => day >= first && !covered.has(day)).map((day) => ({ day, length: 1 }));
+  return [...[...rolled].map(([day, length]) => ({ day, length })), ...daily].sort((a, b) => a.day.localeCompare(b.day));
+}
+
+const daysOnly = (days) => days.map((day) => ({ day, length: 1 }));
+
+/**
+ * One value per bucket. Counts in a rolled bucket are its total, so `perDay` divides by its length to keep
+ * the scale of the daily bars; members is already an average level and is never divided.
+ */
+const seriesFor = (byDay, metric, slots, perDay = metric !== 'members') =>
+  slots.map(({ day, length }) => {
+    const v = byDay[metric]?.[day] ?? 0;
+    return perDay && length > 1 ? Math.round((v / length) * 10) / 10 : v;
   });
-};
+
+/** Rolled-up rows keep the top 25 keys of a breakdown and add the rest under "(other)". */
+const keyLabel = (key, label = (k) => k) => (key === '(other)' ? 'Other' : label(key));
 
 const ranked = (obj = {}) => Object.entries(obj).sort((a, b) => b[1] - a[1]);
 
@@ -197,8 +220,8 @@ export async function overview(main, { guildId }) {
       ${kpi('Warned members', num(guild.warnings.length))}
     </div>
     <div class="grid" style="margin-top:16px">
-      <div class="card"><h2>Messages, last 30 days</h2>${chart({ labels: days, series: [{ name: 'messages', values: seriesFor(byDay, 'messages', days) }] })}</div>
-      <div class="card"><h2>Members</h2>${chart({ labels: days, type: 'line', minZero: false, series: [{ name: 'members', values: seriesFor(byDay, 'members', days).map((v) => v || null) }] })}</div>
+      <div class="card"><h2>Messages, last 30 days</h2>${chart({ labels: days, series: [{ name: 'messages', values: seriesFor(byDay, 'messages', daysOnly(days)) }] })}</div>
+      <div class="card"><h2>Members</h2>${chart({ labels: days, type: 'line', minZero: false, series: [{ name: 'members', values: seriesFor(byDay, 'members', daysOnly(days)).map((v) => v || null) }] })}</div>
       <div class="card wide"><div class="header-row"><h2>Latest log entries</h2><span class="spacer" style="flex:1"></span><a href="#/g/${esc(guildId)}/logs">All logs →</a></div>
         ${logs.entries.length ? logs.entries.map(logEntry).join('') : '<div class="empty">No log entries yet.</div>'}</div>
     </div>`;
@@ -209,29 +232,35 @@ export async function overview(main, { guildId }) {
 // ---------------------------------------------------------------------------
 
 export async function analytics(main, { guildId, query }) {
-  const range = [7, 30, 90, 365].includes(Number(query.get('days'))) ? Number(query.get('days')) : 30;
+  const RANGES = [[7, '7 days'], [30, '30 days'], [90, '90 days'], [365, '1 year'], [3650, 'All time']];
+  const range = RANGES.some(([d]) => d === Number(query.get('days'))) ? Number(query.get('days')) : 30;
   main.innerHTML = loading;
   const [guild, stats] = await Promise.all([api(`/api/guilds/${guildId}`), api(`/api/guilds/${guildId}/stats?days=${range}`)]);
-  const days = lastDays(range);
+  const slots = buckets(stats.rows, range, range === 3650);
+  const labels = slots.map((b) => b.day);
+  const spans = slots.map((b) => b.length);
+  const rolled = spans.some((n) => n > 1);
   const { byDay, byKey } = aggregate(stats.rows);
   const channelLabel = (id) => channelName(guild, id);
+  const plot = (name, metric, extra = {}) => chart({ labels, spans, ...extra, series: [{ name, values: seriesFor(byDay, metric, slots) }] });
 
-  const rangeLinks = [7, 30, 90, 365]
-    .map((d) => `<a class="button${d === range ? ' primary' : ''}" href="#/g/${esc(guildId)}/analytics?days=${d}">${d === 365 ? '1 year' : `${d} days`}</a>`)
+  const rangeLinks = RANGES
+    .map(([d, label]) => `<a class="button${d === range ? ' primary' : ''}" href="#/g/${esc(guildId)}/analytics?days=${d}">${label}</a>`)
     .join('');
 
   main.innerHTML = `${offlineBanner(guild.bot)}
     <div class="row" style="margin-bottom:16px">${rangeLinks}</div>
+    ${rolled ? '<p class="muted small">Stats older than about 90 days are kept as weekly totals, and older than about 400 days as monthly ones. Those show as wider bars giving the average per day, so they line up with the daily ones.</p>' : ''}
     <div class="grid">
-      <div class="card wide"><h2>Messages per day</h2>${chart({ labels: days, wide: true, series: [{ name: 'messages', values: seriesFor(byDay, 'messages', days) }] })}</div>
-      <div class="card"><h2>Active members per day</h2><p class="muted small">Different people who sent at least one message.</p>${chart({ labels: days, type: 'line', series: [{ name: 'people', values: seriesFor(byDay, 'active_users', days) }] })}</div>
-      <div class="card"><h2>Member count</h2>${chart({ labels: days, type: 'line', minZero: false, series: [{ name: 'members', values: seriesFor(byDay, 'members', days).map((v) => v || null) }] })}</div>
-      <div class="card"><h2>Joins and leaves</h2>${chart({ labels: days, series: [{ name: 'joined', values: seriesFor(byDay, 'joins', days) }, { name: 'left', values: seriesFor(byDay, 'leaves', days) }] })}</div>
-      <div class="card"><h2>Bot commands used</h2>${chart({ labels: days, series: [{ name: 'commands', values: seriesFor(byDay, 'commands', days) }] })}</div>
+      <div class="card wide"><h2>Messages per day</h2>${plot('messages', 'messages', { wide: true })}</div>
+      <div class="card"><h2>Active members per day</h2><p class="muted small">Different people who sent at least one message.</p>${plot('people', 'active_users', { type: 'line' })}</div>
+      <div class="card"><h2>Member count</h2>${chart({ labels, spans, type: 'line', minZero: false, series: [{ name: 'members', values: seriesFor(byDay, 'members', slots).map((v) => v || null) }] })}</div>
+      <div class="card"><h2>Joins and leaves</h2>${chart({ labels, spans, series: [{ name: 'joined', values: seriesFor(byDay, 'joins', slots) }, { name: 'left', values: seriesFor(byDay, 'leaves', slots) }] })}</div>
+      <div class="card"><h2>Bot commands used</h2>${plot('commands', 'commands')}</div>
       <div class="card"><h2>Busiest channels</h2>${rankTable(ranked(byKey.messages).map(([id, v]) => [channelLabel(id), v]), { label: 'Channel', value: 'Messages' })}</div>
-      <div class="card"><h2>Commands</h2>${rankTable(ranked(byKey.commands).map(([k, v]) => [`/${k}`, v]), { label: 'Command', value: 'Uses' })}</div>
-      <div class="card"><h2>Logged events</h2>${rankTable(ranked(byKey.events), { label: 'Event', value: 'Times', limit: 15 })}</div>
-      <div class="card"><h2>Songs played</h2>${chart({ labels: days, series: [{ name: 'songs', values: seriesFor(byDay, 'tracks', days) }] })}</div>
+      <div class="card"><h2>Commands</h2>${rankTable(ranked(byKey.commands).map(([k, v]) => [keyLabel(k, (c) => `/${c}`), v]), { label: 'Command', value: 'Uses' })}</div>
+      <div class="card"><h2>Logged events</h2>${rankTable(ranked(byKey.events).map(([k, v]) => [keyLabel(k), v]), { label: 'Event', value: 'Times', limit: 15 })}</div>
+      <div class="card"><h2>Songs played</h2>${plot('songs', 'tracks')}</div>
     </div>
     <p class="muted small">Games, voice and each member's activity are on the <a href="#/g/${esc(guildId)}/activity">Activity</a> tab.</p>`;
 }

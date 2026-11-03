@@ -84,10 +84,79 @@ export default {
       env.DB.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(now),
       env.DB.prepare('DELETE FROM oauth_states WHERE created_at < ?').bind(now - DAY),
       env.DB.prepare('DELETE FROM commands WHERE created_at < ?').bind(now - 30 * DAY),
-      env.DB.prepare('DELETE FROM stats WHERE day < ?').bind(dayOf(now - 400 * DAY)),
     ]);
+    await env.DB.batch(rollUpStats(env, now));
   },
 };
+
+// ---------------------------------------------------------------------------
+//   Rolling up older statistics
+// ---------------------------------------------------------------------------
+
+// Daily rows are kept this long, then rolled into weeks; weeks this long, then rolled into months.
+const DAILY_DAYS = 90;
+const WEEKLY_DAYS = 400;
+// In rolled-up rows, a breakdown (channels, commands, logged events) keeps this many keys; the rest are added up as '(other)'.
+const TOP_KEYS = 25;
+// Levels rather than counts: rolled up as the average over the time covered, not the sum.
+const LEVELS = ['members'];
+
+// The week a day belongs to starts on its Monday, or on the 1st if the month began later that week.
+const weekOf = (day) => `max(date(${day}, '-6 days', 'weekday 1'), date(${day}, 'start of month'))`;
+/** How many days a stats row covers, in SQL. */
+const DAYS_COVERED = `CASE grain WHEN 'd' THEN 1
+  WHEN 'w' THEN julianday(min(date(day, '+1 day', 'weekday 1'), date(day, 'start of month', '+1 month'))) - julianday(day)
+  ELSE julianday(date(day, '+1 month')) - julianday(day) END`;
+
+/**
+ * Rolls rows of one grain older than `before` into the next. Counts are added up, so totals over any range stay
+ * exact (active_users becomes person-days: divide by the days covered for the daily average); levels like the
+ * member count are averaged, weighted by the days each row covers.
+ */
+function rollUp(env, { from, to, bucket, before, where = '' }) {
+  const levels = LEVELS.map((m) => `'${m}'`).join(', ');
+  return [
+    env.DB.prepare(
+      `INSERT INTO stats (guild_id, grain, day, metric, key, value)
+       SELECT guild_id, '${to}', bucket, metric, CASE WHEN place <= ${TOP_KEYS} THEN key ELSE '(other)' END, sum(total)
+       FROM (
+         SELECT *, row_number() OVER (PARTITION BY guild_id, bucket, metric ORDER BY total DESC, key) AS place
+         FROM (SELECT guild_id, ${bucket} AS bucket, metric, key, sum(value) AS total FROM stats
+               WHERE grain = '${from}' AND day < ?1 AND metric NOT IN (${levels}) ${where} GROUP BY 1, 2, 3, 4)
+       ) WHERE true
+       GROUP BY 1, 3, 4, 5
+       ON CONFLICT (guild_id, grain, day, metric, key) DO UPDATE SET value = value + excluded.value`,
+    ).bind(before),
+    env.DB.prepare(
+      `INSERT INTO stats (guild_id, grain, day, metric, key, value)
+       SELECT guild_id, '${to}', ${bucket} AS bucket, metric, key, CAST(round(sum(value * (${DAYS_COVERED})) / sum(${DAYS_COVERED})) AS INTEGER)
+       FROM stats WHERE grain = '${from}' AND day < ?1 AND metric IN (${levels}) ${where}
+       GROUP BY 1, 3, 4, 5
+       ON CONFLICT (guild_id, grain, day, metric, key) DO UPDATE SET value = excluded.value`,
+    ).bind(before),
+    env.DB.prepare(`DELETE FROM stats WHERE grain = '${from}' AND day < ?1`).bind(before),
+  ];
+}
+
+/** Days into weeks after 90 days, weeks into months after 400. Months are kept until the bot leaves the server. */
+function rollUpStats(env, now) {
+  const dailyCutoff = dayOf(now - DAILY_DAYS * DAY);
+  const weeklyCutoff = dayOf(now - WEEKLY_DAYS * DAY);
+  return [
+    // Only whole weeks: everything before the start of the week the cutoff falls in.
+    ...rollUp(env, { from: 'd', to: 'w', bucket: weekOf('day'), before: dayOf(weekStart(dailyCutoff)) }),
+    // Only whole months. Servers the bot has left aren't kept: their weeks are deleted without a monthly copy.
+    ...rollUp(env, { from: 'w', to: 'm', bucket: "date(day, 'start of month')", before: `${weeklyCutoff.slice(0, 7)}-01`, where: 'AND guild_id IN (SELECT id FROM guilds)' }),
+    env.DB.prepare("DELETE FROM stats WHERE grain = 'm' AND guild_id NOT IN (SELECT id FROM guilds)"),
+  ];
+}
+
+/** The same week start as weekOf, in JavaScript: the Monday on or before `day`, or the 1st of its month if later. */
+function weekStart(day) {
+  const d = new Date(`${day}T00:00:00Z`);
+  const monday = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  return Math.max(monday, Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+}
 
 class HttpError extends Error {
   constructor(status, message) {
@@ -350,8 +419,12 @@ async function getGuild(env, session, guildId) {
 }
 
 async function getStats(env, guildId, url) {
-  const days = Math.min(Math.max(Number(url.searchParams.get('days')) || 30, 1), 365);
-  const { results } = await env.DB.prepare('SELECT day, metric, key, value FROM stats WHERE guild_id = ? AND day >= ? ORDER BY day')
+  // Rows older than 90 days cover a week (grain 'w') or a month ('m') starting on `day`; see rollUpStats.
+  const days = Math.min(Math.max(Number(url.searchParams.get('days')) || 30, 1), 3650);
+  const { results } = await env.DB.prepare(
+    `SELECT grain, day, CAST(${DAYS_COVERED} AS INTEGER) AS length, metric, key, value FROM stats
+     WHERE guild_id = ?1 AND day >= date(?2, '-1 month') AND julianday(day) + ${DAYS_COVERED} > julianday(?2) ORDER BY day`,
+  )
     .bind(guildId, dayOf(Date.now() - (days - 1) * DAY))
     .all();
   return json({ days, rows: results });
@@ -532,7 +605,7 @@ async function ownerServers(env, session) {
   requireOwner(session);
   const [{ results: guilds }, { results: statCounts }, { results: access }] = await Promise.all([
     env.DB.prepare('SELECT id, name, icon, member_count, updated_at, snapshot FROM guilds ORDER BY name').all(),
-    env.DB.prepare('SELECT guild_id, COUNT(DISTINCT day) AS days FROM stats GROUP BY guild_id').all(),
+    env.DB.prepare(`SELECT guild_id, CAST(sum(${DAYS_COVERED}) AS INTEGER) AS days FROM (SELECT DISTINCT guild_id, grain, day FROM stats) GROUP BY guild_id`).all(),
     env.DB.prepare('SELECT guild_id, granted_at FROM connection_access').all(),
   ]);
   const statsBy = new Map(statCounts.map((r) => [r.guild_id, r.days]));
@@ -646,8 +719,8 @@ async function botSync(request, env) {
   for (const s of body.stats ?? []) {
     writes.push(
       env.DB.prepare(
-        `INSERT INTO stats (guild_id, day, metric, key, value) VALUES (?1, ?2, ?3, ?4, ?5)
-         ON CONFLICT(guild_id, day, metric, key) DO UPDATE SET value =
+        `INSERT INTO stats (guild_id, grain, day, metric, key, value) VALUES (?1, 'd', ?2, ?3, ?4, ?5)
+         ON CONFLICT(guild_id, grain, day, metric, key) DO UPDATE SET value =
            CASE ?6 WHEN 'max' THEN max(value, excluded.value) WHEN 'set' THEN excluded.value ELSE value + excluded.value END`,
       ).bind(s.guildId, s.day, s.metric, s.key ?? '', s.value, s.op ?? 'add'),
     );

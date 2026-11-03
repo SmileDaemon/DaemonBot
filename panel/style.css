@@ -196,6 +196,8 @@ summary::marker { color: var(--muted); }
 .chart .s2 { fill: var(--chart-2); stroke: var(--chart-2); }
 .chart .line { fill: none; stroke-width: 2; }
 .chart .area { stroke: none; opacity: .1; }
+/* Weekly and monthly averages, so they read as a different kind of bar from the daily ones. */
+.chart rect.rolled { opacity: .6; }
 .chart rect:hover, .chart circle:hover { opacity: .7; }
 .legend { display: flex; gap: 14px; font-size: .8rem; color: var(--muted); margin-bottom: 6px; }
 .legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 6px; background: var(--c); vertical-align: -1px; }
