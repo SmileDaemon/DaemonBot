@@ -17,7 +17,7 @@ You must meet the minimum age required by Discord and by the law where you live.
 If you add the Bot to a Server or manage its settings, you:
 
 - confirm that you have authority to do so for that Server;
-- are responsible for how the Service is configured and used in your Server, including moderation actions taken through it;
+- are responsible for how the Service is configured and used in your Server, including moderation actions taken through it and actions the Bot takes automatically under the settings you choose;
 - must let your Server's members know the Service is in use, for example by linking to the Privacy Policy in your rules or welcome channel, and must ask us to turn usage statistics off (see the Privacy Policy, Section 7) if you cannot lawfully use them where you or your members are;
 - must use the statistics and logs only to run, moderate and understand your Server, and never to harass, stalk, dox or discriminate against anyone;
 - must not export or share members' data outside your Server's moderation team, except as the law requires.
@@ -46,7 +46,7 @@ The Service is provided free of charge and may be unavailable, interrupted or di
 
 ## 8. Disclaimer of warranties
 
-THE SERVICE IS PROVIDED "AS IS" AND "AS AVAILABLE", WITHOUT WARRANTIES OF ANY KIND, WHETHER EXPRESS OR IMPLIED. THIS INCLUDES WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, ACCURACY AND UNINTERRUPTED OPERATION. Statistics are estimates and may be incomplete or inaccurate.
+THE SERVICE IS PROVIDED "AS IS" AND "AS AVAILABLE", WITHOUT WARRANTIES OF ANY KIND, WHETHER EXPRESS OR IMPLIED. THIS INCLUDES WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, ACCURACY AND UNINTERRUPTED OPERATION. Statistics are estimates and may be incomplete or inaccurate. Automatic moderation and security features may act on legitimate activity or miss harmful activity.
 
 ## 9. Limitation of liability
 

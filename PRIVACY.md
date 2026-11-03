@@ -19,6 +19,8 @@ The Service works within Discord, which handles your account under its own [Priv
 - **Messages:** the Bot reads messages to apply the word filter but does not store them. If a message is edited or deleted, its text is recorded in the Server's log.
 - **Invites:** which invite a member used to join, and who created it.
 - **Warnings and tickets:** warnings and their reasons, and the details and status of support tickets.
+- **Security:** if a Server's administrators turn on raid protection, the Bot may remove messages, time out or remove members, or restrict permissions to stop spam and raids. It keeps a record of recent raids, including which members joined during them, and checks new members' account age during a raid.
+- **Backups:** copies of a Server's channels, roles and permission settings, so they can be restored. Messages are not included.
 
 ### 2.2 Usage statistics
 
@@ -84,6 +86,8 @@ These providers may store and process data in the United States and in other cou
 | Usage statistics | Until deleted on request, or until the Server's administrators delete them |
 | Levels and XP | Until the Server's administrators reset them, or until the member opts out |
 | Warnings and tickets | Until deleted by the Server's administrators or on request |
+| Raid records | The 20 most recent raids |
+| Server backups | The 10 most recent backups |
 | Entries posted in a Server's log channel | Until that Server's moderators delete them (they are ordinary Discord messages) |
 | Panel sign-ins | 7 days |
 | Record of changes made through the Panel | 30 days |
