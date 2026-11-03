@@ -14,6 +14,8 @@ You must meet the minimum age required by Discord and by the law where you live.
 
 ## 3. Server administrators
 
+Before the Bot can be set up in a new Server, an administrator must accept these Terms and the Privacy Policy in the Panel. If they decline, the Bot leaves the Server.
+
 If you add the Bot to a Server or manage its settings, you:
 
 - confirm that you have authority to do so for that Server;
