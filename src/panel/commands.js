@@ -5,6 +5,7 @@ import { endGuildSessions } from '../features/gameTracker.js';
 import { saveLevelSettings } from '../features/levels.js';
 import { optIn, optOut } from '../features/optOut.js';
 import { MAX_NAME, MAX_STATS, saveStatChannels, STAT_TYPES, statTypeOffered } from '../features/statChannels.js';
+import { BOT_NEEDS as TEMP_VOICE_NEEDS, removeTempVoice, setupTempVoice } from '../features/tempVoice.js';
 import { changeStaffRole } from '../features/tickets.js';
 import { endGuildVoice } from '../features/voiceTracker.js';
 import { parseWordList, SAVED_WORDS } from '../features/wordFilter.js';
@@ -85,7 +86,7 @@ const HANDLERS = {
     if (levelsOn !== null) changes.push({ name: 'Levels', value: levelsOn ? 'On' : 'Off', inline: true });
     if (!changes.length) refuse('Nothing to change.');
 
-    // As with /config log: log before turning logging off, after turning it on.
+    // As with /setup logs: log before turning logging off, after turning it on.
     if (config.logChannelId && !next.logChannelId) await logPanelChange(guild, user, 'Settings changed', changes);
     guildConfig.set(guild.id, next);
     if (levelsOn !== null) saveLevelSettings(guild.id, { enabled: levelsOn }); // after the set above, so it isn't overwritten
@@ -97,7 +98,7 @@ const HANDLERS = {
 
   async 'tickets.update'(guild, payload, user) {
     const config = guildConfig.get(guild.id, {});
-    if (!config.tickets) refuse('Tickets are not set up in this server. Run /ticket setup in Discord first.');
+    if (!config.tickets) refuse('Tickets are not set up in this server. Run /setup tickets in Discord first.');
     const tickets = { ...config.tickets };
     const changes = [];
 
@@ -145,6 +146,21 @@ const HANDLERS = {
       { name: 'Removed', value: String(removed), inline: true },
     ]);
     return 'Stat channels saved. New names and counts can take up to 5 minutes to show, because of a Discord limit.';
+  },
+
+  async 'tempvoice.setup'(guild, _payload, user) {
+    if (process.env.ENABLE_TEMP_VOICE !== 'true') refuse("Temporary voice channels are turned off in the bot's .env.");
+    if (!guild.members.me.permissions.has(TEMP_VOICE_NEEDS)) {
+      refuse('I need View Channels, Connect, Send Messages, Embed Links, Manage Channels, Manage Roles and Move Members in this server first.');
+    }
+    const { hub, fresh } = await setupTempVoice(guild);
+    await logPanelChange(guild, user, 'Temporary voice channels set up', [{ name: 'Join channel', value: `${hub}`, inline: true }]);
+    return fresh ? `Set up. Joining "${hub.name}" now makes a temporary voice channel.` : 'Already set up; anything missing was made again.';
+  },
+  async 'tempvoice.remove'(guild, _payload, user) {
+    const { left } = await removeTempVoice(guild);
+    await logPanelChange(guild, user, 'Temporary voice channels removed');
+    return `Removed.${left ? ` ${left} channel${left === 1 ? ' is' : 's are'} still in use and will disappear when emptied.` : ''}`;
   },
 
   async 'warnings.clear'(guild, { userId }, user) {

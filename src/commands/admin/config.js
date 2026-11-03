@@ -1,4 +1,4 @@
-import { ChannelType, EmbedBuilder, InteractionContextType, PermissionFlagsBits, SlashCommandBuilder } from 'discord.js';
+import { EmbedBuilder, InteractionContextType, PermissionFlagsBits, SlashCommandBuilder } from 'discord.js';
 import { COLORS, logEvent } from '../../utils/logging.js';
 import { ephemeral } from '../../utils/moderation.js';
 import { defaultColor } from '../../utils/parse.js';
@@ -10,15 +10,7 @@ const onOff = (envVar, serverValue) =>
 export default {
   data: new SlashCommandBuilder()
     .setName('config')
-    .setDescription('Configure the bot for this server')
-    .addSubcommand((s) =>
-      s
-        .setName('log')
-        .setDescription('Set the channel where moderation, bot actions and server events are logged (empty = off)')
-        .addChannelOption((o) =>
-          o.setName('channel').setDescription('Log channel').addChannelTypes(ChannelType.GuildText),
-        ),
-    )
+    .setDescription('Turn the word filter on or off, or see this server\'s settings (set things up with /setup)')
     .addSubcommand((s) =>
       s
         .setName('filter')
@@ -45,43 +37,27 @@ export default {
           {
             name: 'Tickets',
             value: t
-              ? `Channel <#${t.channelId}> · queue <#${t.queueChannelId ?? t.channelId}> · staff <@&${t.staffRoleId}>${t.pingStaff ? ' (pinged)' : ''}`
-              : 'Not set up (`/ticket setup`)',
+              ? `Button in <#${t.channelId}> · queue ${t.queueChannelId ? `<#${t.queueChannelId}>` : 'none'} · staff <@&${t.staffRoleId}>${t.pingStaff ? ' (pinged)' : ''}`
+              : 'Not set up (`/setup tickets`)',
           },
         );
       return interaction.reply({ embeds: [embed], ...ephemeral() });
     }
 
-    if (subcommand === 'filter') {
-      const enabled = interaction.options.getBoolean('enabled', true);
-      guildConfig.set(interaction.guild.id, { ...config, wordFilter: enabled });
-      await interaction.reply(
-        ephemeral(
-          enabled
-            ? 'Word filter is on. Messages with listed words are deleted (Administrators are exempt). I need Manage Messages in each channel.'
-            : 'Word filter is off for this server.',
-          'success',
-        ),
-      );
-      return logEvent(interaction.guild, {
-        title: `Word filter turned ${enabled ? 'on' : 'off'}`,
-        color: COLORS.info,
-        user: interaction.user,
-      });
-    }
-
-    const channel = interaction.options.getChannel('channel');
-    if (channel) {
-      const me = interaction.guild.members.me;
-      if (!channel.permissionsFor(me).has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.AttachFiles])) {
-        return interaction.reply(ephemeral(`I need View Channel, Send Messages, Embed Links, and Attach Files in ${channel} first.`));
-      }
-    }
-    // Log the change before turning logging off, and after turning it on, so either way it's recorded.
-    const entry = { title: `Log channel ${channel ? `set to #${channel.name}` : 'turned off'}`, color: COLORS.info, user: interaction.user };
-    if (!channel) await logEvent(interaction.guild, entry);
-    guildConfig.set(interaction.guild.id, { ...config, logChannelId: channel?.id ?? null });
-    if (channel) await logEvent(interaction.guild, entry);
-    await interaction.reply(ephemeral(channel ? `Logs will be posted in ${channel}.` : 'Logging turned off.', 'success'));
+    const enabled = interaction.options.getBoolean('enabled', true);
+    guildConfig.set(interaction.guild.id, { ...config, wordFilter: enabled });
+    await interaction.reply(
+      ephemeral(
+        enabled
+          ? 'Word filter is on. Messages with listed words are deleted (Administrators are exempt). I need Manage Messages in each channel.'
+          : 'Word filter is off for this server.',
+        'success',
+      ),
+    );
+    return logEvent(interaction.guild, {
+      title: `Word filter turned ${enabled ? 'on' : 'off'}`,
+      color: COLORS.info,
+      user: interaction.user,
+    });
   },
 };

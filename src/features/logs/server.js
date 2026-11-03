@@ -9,6 +9,7 @@ import {
   StickerFormatType,
 } from 'discord.js';
 import { COLORS, logEvent } from '../../utils/logging.js';
+import { isTempVoiceChannel } from '../tempVoice.js';
 import { isTicketChannel } from '../tickets.js';
 import { byBot, byField, diffFields, findAuditEntry, overwriteChanges, permissionChanges, truncate } from './helpers.js';
 
@@ -33,7 +34,7 @@ export function registerServerStructureLogs(client, on) {
   on(Events.ChannelCreate, async (channel) => {
     if (!channel.guild) return;
     const entry = await findAuditEntry(channel.guild, AuditLogEvent.ChannelCreate, channel.id);
-    if (byBot(entry, client) && isTicketChannel(channel)) return;
+    if (byBot(entry, client) && (isTicketChannel(channel) || isTempVoiceChannel(channel))) return;
     return logEvent(channel.guild, {
       title: 'Channel created',
       color: COLORS.join,
@@ -49,6 +50,7 @@ export function registerServerStructureLogs(client, on) {
   on(Events.ChannelDelete, async (channel) => {
     if (!channel.guild) return;
     const entry = await findAuditEntry(channel.guild, AuditLogEvent.ChannelDelete, channel.id);
+    if (byBot(entry, client) && isTempVoiceChannel(channel)) return; // emptied, so the bot removed it
     return logEvent(channel.guild, {
       title: 'Channel deleted',
       color: COLORS.delete,
@@ -77,7 +79,7 @@ export function registerServerStructureLogs(client, on) {
     if (!fields.length) return; // e.g. only its position in the list moved
 
     const entry = await findAuditEntry(after.guild, undefined, (e) => e.targetId === after.id && CHANNEL_AUDIT.has(e.action));
-    if (byBot(entry, client)) return; // /channel lock/unlock/slowmode and /ticket setup log their own changes
+    if (byBot(entry, client)) return; // /channel lock/unlock/slowmode and /setup tickets log their own changes
     return logEvent(after.guild, {
       title: 'Channel updated',
       color: COLORS.edit,

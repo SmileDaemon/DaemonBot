@@ -31,7 +31,7 @@ export function markBotDeleted(ids) {
 
 export const wasBotDeleted = (id) => botDeleted.has(id);
 
-/** Sends an embed to the server's log channel, if one is set with /config log. */
+/** Sends an embed to the server's log channel, if one is set with /setup logs. */
 async function sendLog(guild, embed, files = []) {
   const channelId = guildConfig.get(guild.id, {}).logChannelId;
   if (!channelId) return;

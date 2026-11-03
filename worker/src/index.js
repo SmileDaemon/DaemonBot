@@ -28,6 +28,8 @@ const COMMANDS = {
   'settings.update': 'guild',
   'tickets.update': 'guild',
   'statchannels.set': 'guild',
+  'tempvoice.setup': 'guild',
+  'tempvoice.remove': 'guild',
   'warnings.clear': 'guild',
   'warnings.remove': 'guild',
   'music.pause': 'guild',
@@ -159,7 +161,7 @@ async function sha256(text) {
 const redirectUri = (url) => `${url.origin}/auth/callback`;
 
 // What the bot asks for when it's added to a server. MAINTAINING.md → "Invite the bot" lists what each is for.
-const BOT_PERMISSIONS = '1460560719030';
+const BOT_PERMISSIONS = '1460577496246';
 
 /** Sends someone to Discord's "Add to server" page, where they pick a server they manage. */
 function invite(env) {

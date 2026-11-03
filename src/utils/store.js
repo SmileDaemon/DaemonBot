@@ -33,6 +33,9 @@ export const guildConfig = createStore('config');
 /** Tickets, keyed by guild ID: { next, byChannel: { [channelId]: ticket } } */
 export const tickets = createStore('tickets');
 
+/** Temporary voice channels in use, keyed by guild ID: { [channelId]: { ownerId, locked, private, messageId } } */
+export const tempVoiceRooms = createStore('tempvoice');
+
 /** Game activity, keyed by user ID, kept separately for each server: { guilds: { [guildId]: { [game]: { ms, sessions, days, lastDay, first, last } } } } */
 export const gameStats = createStore('games');
 

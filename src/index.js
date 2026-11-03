@@ -8,6 +8,7 @@ import { registerGameTracker } from './features/gameTracker.js';
 import { registerLevels } from './features/levels.js';
 import { registerServerLogs } from './features/serverLogs.js';
 import { registerStatChannels } from './features/statChannels.js';
+import { registerTempVoice } from './features/tempVoice.js';
 import { registerVoiceTracker } from './features/voiceTracker.js';
 import { handleWordFilter, startWordFilter } from './features/wordFilter.js';
 import { setupMusic } from './music/lavalink.js';
@@ -29,6 +30,7 @@ const activityEnabled = process.env.ENABLE_ACTIVITY_TRACKING === 'true';
 const connectionsEnabled = process.env.ENABLE_CONNECTION_TRACKING === 'true';
 const levelsEnabled = process.env.ENABLE_LEVELS === 'true';
 const statChannelsEnabled = process.env.ENABLE_STAT_CHANNELS === 'true';
+const tempVoiceEnabled = process.env.ENABLE_TEMP_VOICE === 'true';
 const panelEnabled = Boolean(process.env.PANEL_URL && process.env.PANEL_SECRET);
 
 const intents = new Set([GatewayIntentBits.Guilds]);
@@ -62,6 +64,8 @@ if (activityEnabled || connectionsEnabled) {
 if (levelsEnabled) intents.add(GatewayIntentBits.GuildMessages).add(GatewayIntentBits.GuildVoiceStates);
 // Stat channels count members, roles and who's in voice.
 if (statChannelsEnabled) intents.add(GatewayIntentBits.GuildMembers).add(GatewayIntentBits.GuildVoiceStates);
+// Temporary voice channels watch who joins and leaves voice.
+if (tempVoiceEnabled) intents.add(GatewayIntentBits.GuildVoiceStates);
 // The control panel counts messages per channel; that doesn't need their content.
 if (panelEnabled) intents.add(GatewayIntentBits.GuildMessages);
 // Presence (what someone is playing) is a privileged intent too.
@@ -86,10 +90,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
       await client.commands.get(interaction.commandName)?.autocomplete?.(interaction);
     } else if (interaction.isChatInputCommand() || interaction.isMessageContextMenuCommand()) {
       await client.commands.get(interaction.commandName)?.execute(interaction);
-    } else if (interaction.isModalSubmit() || interaction.isButton()) {
+    } else if (interaction.isModalSubmit() || interaction.isButton() || interaction.isAnySelectMenu()) {
       // Custom IDs are prefixed with the owning command's name, e.g. "embed:create:123" or "ticket:claim:456".
       const command = client.commands.get(interaction.customId.split(':')[0]);
-      await (interaction.isButton() ? command?.handleButton?.(interaction) : command?.handleModal?.(interaction));
+      if (interaction.isButton()) await command?.handleButton?.(interaction);
+      else if (interaction.isModalSubmit()) await command?.handleModal?.(interaction);
+      else await command?.handleSelect?.(interaction);
     }
   } catch (err) {
     console.error(`Error handling interaction ${interaction.customId ?? interaction.commandName}:`, err);
@@ -120,6 +126,7 @@ if (activityEnabled) registerActivityTracker(client);
 if (connectionsEnabled) registerConnectionTracker(client);
 if (levelsEnabled) registerLevels(client);
 if (statChannelsEnabled) registerStatChannels(client);
+if (tempVoiceEnabled) registerTempVoice(client);
 
 process.on('unhandledRejection', (err) => console.error('Unhandled rejection:', err));
 

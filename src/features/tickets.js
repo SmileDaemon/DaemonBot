@@ -201,7 +201,7 @@ async function openTicketsOf(guild, userId) {
 export async function openTicket(interaction, subject, details) {
   const { guild, user } = interaction;
   const settings = ticketSettings(guild.id);
-  if (!settings) return { error: "Tickets aren't set up in this server yet. An admin can run `/ticket setup`." };
+  if (!settings) return { error: "Tickets aren't set up in this server yet. An admin can run `/setup tickets`." };
 
   const openCount = (await openTicketsOf(guild, user.id)).length;
   if (openCount >= MAX_OPEN_PER_USER) {

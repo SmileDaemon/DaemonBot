@@ -440,6 +440,20 @@ export async function serverstats(main, ctx) {
   wireStatChannels(main, guild, () => serverstats(main, ctx));
 }
 
+function tempVoiceCard(guild) {
+  const tv = guild.settings.tempVoice;
+  const body = !guild.features.tempVoice || !tv
+    ? '<p class="muted">Turned off in the bot\'s .env.</p>'
+    : tv.setUp
+      ? `<p>Joining <b>${esc(tv.hubName ?? 'the join channel')}</b> makes a voice channel named after the member, in <b>${esc(tv.categoryName ?? 'its category')}</b>. ${num(tv.active)} in use now.</p>
+        ${tv.hubName ? '' : '<div class="banner warn">The join channel was deleted. Set it up again to bring it back.</div>'}
+        <p class="muted small">Owners manage their channel with buttons in its chat: rename, user limit, lock, private (only invited members can see and join), invite, remove and transfer. Channels disappear when everyone leaves.</p>
+        <div class="row"><button data-tempvoice="setup">Set up again</button><button data-tempvoice="remove">Remove</button></div>`
+      : `<p class="muted">Makes a <b>Temp Voice Channels</b> category with a <b>Join To Create</b> channel. Joining it gives a member their own voice channel, which disappears when everyone leaves. Needs the bot to have Move Members.</p>
+        <button class="primary" data-tempvoice="setup">Set up</button>`;
+  return `<div class="card" id="temp-voice"><h2>Temporary voice channels</h2>${body}</div>`;
+}
+
 export async function settings(main, ctx) {
   const { guildId } = ctx;
   main.innerHTML = loading;
@@ -469,15 +483,23 @@ export async function settings(main, ctx) {
       <form class="card" id="tickets">
         <h2>Tickets</h2>
         ${t
-          ? `<p class="muted small">"Open a ticket" button: ${esc(channelName(guild, t.channelId))}. Each ticket gets its own private channel. To move the button or the ticket categories, run <code>/ticket setup</code> in Discord.</p>
+          ? `<p class="muted small">"Open a ticket" button: ${esc(channelName(guild, t.channelId))}. Each ticket gets its own private channel. To move the button or the ticket categories, run <code>/setup tickets</code> in Discord.</p>
             <label class="field"><span>Staff role</span><select name="staffRoleId">${guild.roles.map((r) => option(r.id, `@${r.name}`, r.id === t.staffRoleId)).join('')}</select></label>
             <label class="field"><span>Queue channel</span><select name="queueChannelId">${channelOptions(guild, t.queueChannelId, 'None: claim inside each ticket')}</select>
               <span class="muted small">Lists new tickets with their details, so pick a channel only staff can see.</span></label>
             <label class="switch"><input type="checkbox" name="pingStaff"${t.pingStaff ? ' checked' : ''}> Ping the staff role for new tickets</label>
             <button class="primary" type="submit">Save</button>`
-          : '<p class="muted">Tickets aren\'t set up here yet. Run <code>/ticket setup</code> in Discord to choose the ticket channel; then the rest can be changed here.</p>'}
+          : '<p class="muted">Tickets aren\'t set up here yet. Run <code>/setup tickets</code> in Discord to choose the ticket channel; then the rest can be changed here.</p>'}
       </form>
+      ${tempVoiceCard(guild)}
     </div>`;
+
+  main.querySelector('#temp-voice')?.addEventListener('click', (e) => {
+    const button = e.target.closest('[data-tempvoice]');
+    if (!button) return;
+    if (button.dataset.tempvoice === 'remove' && !confirm('Remove the join channel? Channels in use disappear when they empty.')) return;
+    act(button, guildId, `tempvoice.${button.dataset.tempvoice}`, {}, () => settings(main, ctx));
+  });
 
   main.querySelector('#general').addEventListener('submit', (e) => {
     e.preventDefault();
